@@ -25,7 +25,7 @@ All you have to do to create your own cute little table is to inherit `SqlTableM
  - \_\_types\_\_
    - (list[str]) Types of declared columns
  - \_\_primary\_\_
-   - (list[str]) List of one ore more primary keys
+   - (list[str]) List of one or more primary keys
  - \_\_tablename\_\_
    - (str) Name of the table
 

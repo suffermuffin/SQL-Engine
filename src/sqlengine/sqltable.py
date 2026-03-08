@@ -16,12 +16,12 @@ class SqlTableMixin:
     __primary__   : list[str]
     __tablename__ : str
 
-    def __init__(self, db_filename: str, forse_drop : bool = False) -> None:
+    def __init__(self, db_filename: str, force_drop : bool = False) -> None:
         
         self.db_filename  = db_filename
 
         self._validate_attributes()
-        self._validate_write_db(forse_drop)
+        self._validate_write_db(force_drop)
         self.create_table()
 
     
@@ -180,8 +180,8 @@ class SqlTableMixin:
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
-            f"db_filename={self.db_filename!r}, "
-            f"table={self.tablename!r}, "
+            f"db_filename={self.db_filename}, "
+            f"table={self.tablename}, "
             f"columns={len(self.columns)}, "
             f"primary_key = ({', '.join(self.primary)})"
             f")"

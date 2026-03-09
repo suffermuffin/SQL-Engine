@@ -70,13 +70,13 @@ def delete_rows(tablename : str, where_clause : str) -> str:
     return f"DELETE FROM {tablename} WHERE {where_clause};"
 
 
-def where_equals(column : str, equals : SqlValue | list[SqlValue]) -> str:
+def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
     """ Generates where clause for provided `equals` values to look for equal values in `column` """
     
     if isinstance(equals, str):
         equals = f"\"{equals}\""
     
-    if not isinstance(equals, list):
+    if not isinstance(equals, Sequence):
         return f'{column} = {equals}'
 
     equals_list = []

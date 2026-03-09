@@ -169,7 +169,7 @@ class SqlTableMixin:
     def select_eq(
             self, 
             column : str, 
-            equals : SqlValue | list[SqlValue],
+            equals : SqlValue | Sequence[SqlValue],
             return_columns : str | list[str] = "*"
         ) -> list[SqlRow]:
         """ Returns rows or `return_columns` of rows where `column` value is equal to `equals` """

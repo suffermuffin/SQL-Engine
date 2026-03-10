@@ -63,7 +63,7 @@ class SqlTableMixin:
 
     
     def _insert_args(self, *args):
-        query = sql.insert(self.tablename, self.columns)
+        query = sql.insert_row(self.tablename, self.columns)
         self.execute(query, args)
 
 
@@ -154,7 +154,7 @@ class SqlTableMixin:
         return self.execute(query)
 
     
-    def delete_eq(self, column : str, equals : SqlValue | list[SqlValue]) -> None:
+    def delete_eq(self, column : str, equals : SqlValue | Sequence[SqlValue]) -> None:
         """ Deletes row, where `column` values are equal to `equals` """
         where_clause = sql.where_equals(column, equals)
         return self.delete_rows(where_clause)
@@ -183,7 +183,7 @@ class SqlTableMixin:
             f"db_filename={self.db_filename}, "
             f"table={self.tablename}, "
             f"columns={len(self.columns)}, "
-            f"primary_key = ({', '.join(self.primary)})"
+            f"primary_key=({', '.join(self.primary)})"
             f")"
         )
     

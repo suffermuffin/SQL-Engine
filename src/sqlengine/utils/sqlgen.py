@@ -24,9 +24,12 @@ def create_table(
     )
 
 
-def format_columns(columns : list[str]) -> str:
-    """ Formats columns into `(col1, col2, ...)` format """
-    return f'({', '.join(columns)})'
+def format_list(columns : list[str], brakets : bool = True) -> str:
+    """ Formats list into `(item1, item2, ...)` format """
+    fmated = f'({', '.join(columns)})'
+    if not brakets: 
+        return fmated.strip('()')
+    return fmated
 
 
 def drop_table(tablename : str) -> str:
@@ -34,36 +37,32 @@ def drop_table(tablename : str) -> str:
 
 
 def values_placeholder(n_values : int) -> str:
-    """ Creates placeholder like (?, ?, ?, ...) with "?" `n_values` times """
-    return f"({', '.join(['?']*n_values)})"
+    """ Creates placeholder `(?, ?, ?, ...)` with "?" `n_values` times """
+    return format_list(['?']*n_values)
 
 
 def bulk_placeholder(n_values : int, n_rows : int) -> str:
-    """ Creates placeholders (?, ?, ?, ...) for each row """
+    """ Creates placeholders `(?, ?, ..), (?, ?, ..), ...` for each row """
     place_holder = values_placeholder(n_values)
-    return ', '.join([place_holder]*n_rows)
+    return format_list([place_holder]*n_rows, False)
 
 
-def insert(tablename : str, columns : list[str]) -> str:
-    """ Creates insert query """
+def insert(tablename : str, columns : list[str], placeholder : str):
+    return f"INSERT INTO {tablename} {format_list(columns)} VALUES {placeholder};"
+
+
+def insert_row(tablename : str, columns : list[str]) -> str:
+    """ Creates insert query for 1 row """
     n_values = len(columns)
     placeholder = values_placeholder(n_values)
-    return (
-            f"INSERT INTO {tablename} {format_columns(columns)} "
-            f"VALUES {placeholder};"
-        )
+    return insert(tablename, columns, placeholder)
 
 
 def bulk_insert(tablename : str, columns : list[str], n_rows : int) -> str:
-    """ Creates insert query """
+    """ Creates insert query for multiple rows """
     n_values = len(columns)
     placeholder = bulk_placeholder(n_values, n_rows)
-
-    return (
-        f"INSERT INTO {tablename} "
-        f"{format_columns(columns)} "
-        f"VALUES {placeholder};"
-    )
+    return insert(tablename, columns, placeholder)
 
 
 def delete_rows(tablename : str, where_clause : str) -> str:
@@ -76,7 +75,7 @@ def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
     if isinstance(equals, str):
         equals = f"\"{equals}\""
     
-    if not isinstance(equals, Sequence):
+    if not isinstance(equals, (list, tuple)):
         return f'{column} = {equals}'
 
     equals_list = []
@@ -87,16 +86,16 @@ def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
         else:
             equals_list.append(eq_item)
 
-    return f'{column} in ({', '.join(equals_list)})'
+    return f'{column} in {format_list(equals_list)}'
 
 
 def select(tablename : str, columns : str | list[str] = "*", where_clause : str | None = None) -> str:
     """ Creates select query """
-    _columns = columns if isinstance(columns, str) else format_columns(columns).strip('()')
+    _columns = columns if isinstance(columns, str) else format_list(columns, False)
     
-    sql_str  = f"SELECT {_columns} FROM {tablename}"
-    sql_str += f" WHERE {where_clause}" if where_clause else ""
-    sql_str += ";"
+    query  = f"SELECT {_columns} FROM {tablename}"
+    query += f" WHERE {where_clause}" if where_clause else ""
+    query += ";"
 
-    return sql_str
+    return query
 

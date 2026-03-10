@@ -24,12 +24,11 @@ def create_table(
     )
 
 
-def format_list(columns : list[str], brakets : bool = True) -> str:
+def format_list(items : list[str], brakets : bool = True) -> str:
     """ Formats list into `(item1, item2, ...)` format """
-    fmated = f'({', '.join(columns)})'
-    if not brakets: 
-        return fmated.strip('()')
-    return fmated
+    items_str = ', '.join(items)
+    if not brakets: return items_str
+    return f'({items_str})'
 
 
 def drop_table(tablename : str) -> str:
@@ -44,7 +43,7 @@ def values_placeholder(n_values : int) -> str:
 def bulk_placeholder(n_values : int, n_rows : int) -> str:
     """ Creates placeholders `(?, ?, ..), (?, ?, ..), ...` for each row """
     place_holder = values_placeholder(n_values)
-    return format_list([place_holder]*n_rows, False)
+    return f"{format_list([place_holder]*n_rows, False)}"
 
 
 def insert(tablename : str, columns : list[str], placeholder : str):

@@ -1,10 +1,12 @@
-import logging, sqlite3, os, time
+import logging
+import os
+import sqlite3
+import time
 from abc import abstractmethod
-
 from typing import Iterable, Sequence
 
-from .utils.types import SqlRow, SqlValue
 from .utils import sqlgen as sql
+from .utils.types import SqlRow, SqlValue
 
 LOGGER = logging.getLogger(__name__)
 

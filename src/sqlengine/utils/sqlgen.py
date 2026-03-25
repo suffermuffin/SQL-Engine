@@ -1,5 +1,7 @@
 from typing import Sequence
+
 from .types import SqlValue
+
 
 def create_table(
         tablename: str,

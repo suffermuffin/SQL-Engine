@@ -1,3 +1,4 @@
 __pycache__
 sqlengine.egg-info
 *.ipynb
+*.db

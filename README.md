@@ -5,7 +5,7 @@ My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without
 
 ## Features
 
-Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_rows`. Sql-Engine also provides some bulk insertions methods, which are `insert_many` and `insert_many_transaction`. 
+Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_rows`. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `fetchall_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
 
 
 ## Installation

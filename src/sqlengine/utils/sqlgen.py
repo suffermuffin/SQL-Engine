@@ -1,6 +1,13 @@
 from typing import Sequence
-
 from .types import SqlValue
+
+
+def format_list(items : list, brakets : bool = True) -> str:
+    """ Formats list into `(item1, item2, ...)` format """
+    items_str = ', '.join(items)
+    if not brakets: 
+        return items_str
+    return f'({items_str})'
 
 
 def create_table(
@@ -10,27 +17,20 @@ def create_table(
         primary  : list[str]
     ) -> str:
 
-    columns_types = ', '.join(
+    columns_types = format_list(
         [
-            f'{col} {dtype}'
-            for col, dtype 
+            f'{col} {dtype}' for col, dtype 
             in zip(columns, types)
-        ]
+        ], 
+        False
     )
     
-    primary_keys = ', '.join(primary)
+    primary_keys = format_list(primary)
     
     return (
         f"CREATE TABLE IF NOT EXISTS {tablename} "
-        f"({columns_types}, PRIMARY KEY ({primary_keys}));"
+        f"({columns_types}, PRIMARY KEY {primary_keys});"
     )
-
-
-def format_list(items : list[str], brakets : bool = True) -> str:
-    """ Formats list into `(item1, item2, ...)` format """
-    items_str = ', '.join(items)
-    if not brakets: return items_str
-    return f'({items_str})'
 
 
 def drop_table(tablename : str) -> str:

@@ -1,14 +1,14 @@
 import logging
 import os
 import sqlite3
-import time
 from abc import abstractmethod
-from typing import Iterable, Sequence
+from contextlib import contextmanager
+from typing import Iterable, Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
 from .utils.types import SqlRow, SqlValue
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SqlTableMixin:
@@ -33,12 +33,13 @@ class SqlTableMixin:
             raise ValueError("`db_filename` must have '.db' extension")
         
         if not os.path.exists(self.db_filename):
-            LOGGER.info(f'{self.__class__.__name__}: {self.db_filename} does not exist. Creating...')
+            logger.info(f'{self.__class__.__name__}: {self.db_filename} does not exist. Creating...')
             parent_dir = self.db_filename.removesuffix(os.path.basename(self.db_filename))
-            if parent_dir: os.makedirs(parent_dir, exist_ok=True)
+            if parent_dir: 
+                os.makedirs(parent_dir, exist_ok=True)
 
         elif force_drop:
-            self._drop_table()
+            self.drop_table()
 
     
     def _validate_attributes(self):
@@ -58,11 +59,6 @@ class SqlTableMixin:
             raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
 
 
-    def _drop_table(self):
-        LOGGER.warning(f'DROPPING {self.tablename} TABLE IN 3s')
-        time.sleep(3)
-        self.execute(sql.drop_table(self.tablename))
-
     
     def _insert_args(self, *args):
         query = sql.insert_row(self.tablename, self.columns)
@@ -74,32 +70,97 @@ class SqlTableMixin:
         return [item for row in rows for item in row]
     
     
-    def connect(self):
-        """ Helper to connect to the database """
+    def connect(self) -> sqlite3.Connection:
+        """ Shortcut to connection context manager """
         return sqlite3.connect(self.db_filename)
+    
+
+    @contextmanager
+    def transaction(self): 
+        """ Creates context manager to use class methods in transaction """
+
+        if self.in_transaction():
+            raise RuntimeError("Nested transactions are not permited")
+
+        self._trans = self.connect()
+        self._trans_cursor = self._trans.cursor()
+        
+        try:
+            logger.debug(f"{self.__class__.__name__}: Transaction started")
+            yield
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}: Error while in transaction:")
+            logger.error(e, exc_info=True)
+            self._trans.rollback()
+            raise e
+        
+        else:
+            self._trans.commit()
+
+        finally:
+            logger.debug(f"{self.__class__.__name__}: Transaction finished")
+            self._trans.close()
+            del(self._trans)
+            del(self._trans_cursor)
+
+    
+    def in_transaction(self) -> bool:
+        """ Returns True if instance is in transaction """
+        return hasattr(self, "_trans") and hasattr(self, "_trans_cursor")
+
+    
+    @overload
+    def _fetch(self, query : str, method : Literal["fetchone"], *args) -> SqlRow: ...
+    @overload
+    def _fetch(self, query : str, method : Literal["fetchall", "fetchmany"], *args) -> list[SqlRow]: ...
+
+    def _fetch(self, query : str, method : Literal["fetchone", "fetchall", "fetchmany"], *args) -> SqlRow | list[SqlRow]:
+        
+        logger.debug(f"{self.__class__.__name__}.{method}(): {query}")
+
+        if self.in_transaction():
+            self._trans_cursor.execute(query)
+            return getattr(self._trans_cursor, method)(*args)
+
+        with self.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            return getattr(cursor, method)(*args)
 
     
     def execute(self, query : str, *args) -> None:
-        """ Shortcut to Connection.execute() -> commit() for single operations """
+        """
+        Shortcut to connect() -> execute() -> commit() for single operations. 
+        Can be used in transaction using `transaction()` manager 
+        """
 
-        LOGGER.debug(f"{self.__class__.__name__}: {query} {', '.join([str(a) for a in args])}")
+        logger.debug(f"{self.__class__.__name__}: {query} {self._flatten_rows(args) or ''}")
+
+        if self.in_transaction():
+            self._trans_cursor.execute(query, *args)
+            return
         
         with self.connect() as conn:
             cursor = conn.cursor()
             cursor.execute(query, *args)
             conn.commit()
 
+
+    def drop_table(self):
+        self.execute(sql.drop_table(self.tablename))
+
+
+    def fetchone(self, query : str) -> SqlRow:
+        return self._fetch(query, "fetchone")
     
+
+    def fetchmany(self, query : str, size : int = 1) -> list[SqlRow]:
+        return self._fetch(query, "fetchmany", size)
+    
+
     def fetchall(self, query : str) -> list[SqlRow]:
-        
-        LOGGER.debug(f"{self.__class__.__name__}: {query}")
-
-        with self.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            rows = cursor.fetchall()
-
-        return rows
+        return self._fetch(query, "fetchall")
     
 
     def create_table(self):
@@ -119,37 +180,27 @@ class SqlTableMixin:
         
         Args:
             rows: List of tuples, each tuple contains values for one row
-                 in the order of __columns__
+                in the order of __columns__
         """
-        if not rows: return
         
-        query     = sql.bulk_insert(self.tablename, self.columns, len(rows))
+        query = sql.bulk_insert(self.tablename, self.columns, len(rows))
         flat_args = self._flatten_rows(rows)
         
         return self.execute(query, flat_args)
     
-    
-    def insert_many_transaction(self, rows: list[tuple], batch_size: int = 1000) -> None:
-        """
-        Insert many rows in batches, each batch in its own transaction.
-        Good for very large datasets to avoid memory issues.
-        """
-        LOGGER.info(f"{self.__class__.__name__}: inserting {len(rows)} rows in {(len(rows)-1)//batch_size + 1} batches")
-        
-        with self.connect() as conn:
-            cursor = conn.cursor()
 
-            for i in range(0, len(rows), batch_size):
-                
-                batch = rows[i:i + batch_size]
-                
-                query         = sql.bulk_insert(self.tablename, self.columns, len(batch))
-                flat_args     = self._flatten_rows(batch)
-                
-                cursor.execute(query, flat_args)
-            
-            conn.commit()
-    
+    def fetchall_iterator(self, query: str, batch_size: int = 1000) -> Generator[list[SqlRow], None, None]:
+        """ Yields all rows in batches, each batch in its own transaction. """
+
+        if not self.in_transaction():
+            raise RuntimeError(("To use `fetchall_iterator()` method, first you have "
+                                "to keep open transaction using `transaction()` manager"))
+
+        self._trans_cursor.execute(query)
+
+        while batch := self._trans_cursor.fetchmany(batch_size):
+            yield batch
+        
     
     def delete_rows(self, where_clause : str) -> None:
         query = sql.delete_rows(self.tablename, where_clause)
@@ -184,14 +235,15 @@ class SqlTableMixin:
             f"{self.__class__.__name__}("
             f"db_filename={self.db_filename}, "
             f"table={self.tablename}, "
-            f"columns={len(self.columns)}, "
-            f"primary_key=({', '.join(self.primary)})"
+            f"columns={sql.format_list(self.columns)}, "
+            f"primary_key={sql.format_list(self.primary)}"
             f")"
         )
     
 
     @abstractmethod
     def insert(self, *args, **kwargs) -> None:
+        """ Insert single row. """
         self._insert_args(*args, **kwargs)
         raise NotImplementedError("Declare this method with correct types")
     

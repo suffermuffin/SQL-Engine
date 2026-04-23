@@ -1,6 +1,6 @@
 # Sql-Engine
 
-My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies.
+My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies **(vibe-code free!)**.
 
 
 ## Features
@@ -31,6 +31,8 @@ All you have to do to create your own cute little table is to inherit `SqlTableM
 
 ### Example in code
 
+**Declare your table**
+
 ```py
 from sqlengine import SqlTableMixin
 
@@ -41,124 +43,164 @@ class Employees(SqlTableMixin):
     __primary__   : list[str] = ["ID"]
     __tablename__ : str = "EmployeesDB"
 
-    def __init__(self, db_filename: str, force_drop: bool = False) -> None:
-        super().__init__(db_filename, force_drop)
-
     # overwrite your insert method for type consistancy
     def insert(self, id : int, name : str, occupation : str) -> None:
         return self._insert_args(id, name, occupation)
 
 ```
 ---
-**[IN]**
+**Instantiate**
 
 ```py
-db_filename = "MyBuisness.db"
 # Force table overwrite with `force_drop=True`
-employees_table = Employees(db_filename, force_drop=True) 
+employees_table = Employees("MyBusiness.db", force_drop=True)
 ```
 
-**[Debug output]**
-```
-DROPPING EmployeesDB TABLE IN 3s
+```sql
+-- Debug output --
 Employees: DROP TABLE IF EXISTS EmployeesDB 
 Employees: CREATE TABLE IF NOT EXISTS EmployeesDB (ID INT, Name TEXT NOT NULL, Occupation TEXT, PRIMARY KEY (ID));
 ```
 
 ---
-**[IN]**
+**Insert single row**
 
 ```py
 employees_table.insert(0, 'John', 'CEO')
 ```
 
-**[Debug output]**
-```
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); (0, 'John', 'CEO')
+```sql
+-- Debug output --
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [0, 'John', 'CEO']
 ```
 
 ---
-**[IN]**
+**Insert many rows**
 
 ```py
 workers  = [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
 employees_table.insert_many(workers)
 ```
 
-**[Debug output]**
-```
+```sql
+-- Debug output --
 Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?); [1, 'Boris', 'worker', 2, 'George', 'worker', 3, 'Kate', 'worker']
 ```
 
 ---
-**[IN]**
+**Insert many rows in transaction**
 
 ```py
-sales = [(4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
-employees_table.insert_many_transaction(sales, batch_size=1)
+batch_size = 2
+
+sales = [
+    (4, 'Angela', 'seller'), (5, 'Mark', 'seller'), 
+    (6, 'Max', 'seller'), (7, 'Maria', 'seller')
+]
+
+with employees_table.transaction():
+    for i in range(0, len(sales), batch_size):
+        batch = sales[i: i + batch_size]
+        employees_table.insert_many(batch)
 ```
 
-**[Debug output]**
-```
-Employees: inserting 2 rows in 2 batches
+```sql
+-- Debug output --
+Employees: Transaction started
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?), (?, ?, ?); [4, 'Angela', 'seller', 5, 'Mark', 'seller']
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?), (?, ?, ?); [6, 'Max', 'seller', 7, 'Maria', 'seller']
+Employees: Transaction finished
 ```
 
 ---
-**[IN]**
+**Query select with specified columns**
 
 ```py
 employees_table.select_eq('Occupation', 'CEO', return_columns=['Name', 'ID'])
-```
 
-**[Debug output]**
-```
-Employees: SELECT Name, ID FROM EmployeesDB WHERE Occupation = "CEO";
-```
-
-**[OUT]**
-
-```py
+# Returns
 [('John', 0)]
 ```
 
----
-**[IN]**
-
-```py
-employees_table.select_eq('Occupation', ['seller', 'CEO'])
-```
-
-**[Debug output]**
-```
-Employees: SELECT * FROM EmployeesDB WHERE Occupation in ("seller", "CEO");
-```
-
-**[OUT]**
-
-```py
-[(0, 'John', 'CEO'), (4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
+```sql
+-- Debug output --
+Employees.fetchall(): SELECT Name, ID FROM EmployeesDB WHERE Occupation = "CEO";
 ```
 
 ---
-**[IN]**
+**Query select with multiple specified values**
+
+```py
+employees_table.select_eq('Occupation', equals=['worker', 'CEO'])
+
+# Returns
+[(0, 'John', 'CEO'),
+ (1, 'Boris', 'worker'),
+ (2, 'George', 'worker'),
+ (3, 'Kate', 'worker')]
+```
+
+```sql
+-- Debug output --
+Employees.fetchall(): SELECT * FROM EmployeesDB WHERE Occupation in ("worker", "CEO");
+```
+
+---
+**Delete Rows**
 
 ```py
 employees_table.delete_eq('ID', 1)
-employees_table.select()
 ```
 
-**[Debug output]**
-```
+```sql
+-- Debug output --
 Employees: DELETE FROM EmployeesDB WHERE ID = 1; 
-Employees: SELECT * FROM EmployeesDB;
 ```
 
-**[OUT]**
+---
+**Select all**
 
 ```py
+employees_table.select()
+
+# Returns
 [(0, 'John', 'CEO'),
  (2, 'George', 'worker'),
  (3, 'Kate', 'worker'),
  (4, 'Angela', 'seller'),
- (5, 'Mark', 'seller')]
+ (5, 'Mark', 'seller'),
+ (6, 'Max', 'seller'),
+ (7, 'Maria', 'seller')]
+```
+
+```sql
+-- Debug output --
+Employees.fetchall(): SELECT * FROM EmployeesDB;
+```
+
+**Create transaction rows batch generator**
+
+```py
+import logging
+from sqlengine import sqlgen as sql
+
+logger = logging.getLogger(__name__)
+
+with employees_table.transaction():
+    
+    query = sql.select(employees_table.tablename, columns=['Name', 'ID'])
+    batches = employees_table.fetchall_iterator(query, batch_size=2)
+    
+    for i, batch in enumerate(batches):
+        logger.debug(f"batch {i}: {batch}")
+```
+
+```sql
+-- Debug output --
+Employees: Transaction started
+batch 0: [('John', 0), ('George', 2)]
+batch 1: [('Kate', 3), ('Angela', 4)]
+batch 2: [('Mark', 5), ('Max', 6)]
+batch 3: [('Maria', 7)]
+Employees: Transaction finished
 ```

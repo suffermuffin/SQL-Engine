@@ -1,7 +1,6 @@
 import logging
 import os
 import sqlite3
-from abc import abstractmethod
 from contextlib import contextmanager
 from typing import Iterable, Sequence, Literal, Generator, overload
 
@@ -12,34 +11,52 @@ logger = logging.getLogger(__name__)
 
 
 class SqlTableMixin:
+    """
+    Lightweighted wrapper for SQLite3 tables
+    
+    Args:
+        database (str): database filename to connect to. If it not exists - will create new one first.
+            If `":memory:"` is passed, then database will be created in memory and you will have to
+            create table manually with `create_table()` method insed `transaction()` block.
+        force_drop (bool): If `True` - will drop existing table.
+        **connection_params (dict): Params to create connection with. 
+            Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
+
+    """
 
     __columns__   : list[str]
     __types__     : list[str]
     __primary__   : list[str]
     __tablename__ : str
 
-    def __init__(self, db_filename: str, force_drop : bool = False) -> None:
+    def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
-        self.db_filename  = db_filename
+        self.database = database
+        self.connection_params = connection_params
 
         self._validate_attributes()
         self._validate_write_db(force_drop)
-        self.create_table()
 
     
     def _validate_write_db(self, force_drop : bool):
 
-        if not self.db_filename.endswith('.db'):
-            raise ValueError("`db_filename` must have '.db' extension")
+        if self.database == ":memory:":
+            logger.debug(f"{self.__class__.__name__}: Using in memory database")
+            return
+
+        if not self.database.endswith('.db'):
+            raise ValueError("`database` must have '.db' extension")
         
-        if not os.path.exists(self.db_filename):
-            logger.info(f'{self.__class__.__name__}: {self.db_filename} does not exist. Creating...')
-            parent_dir = self.db_filename.removesuffix(os.path.basename(self.db_filename))
+        if not os.path.exists(self.database):
+            logger.info(f'{self.__class__.__name__}: {self.database} does not exist. Creating...')
+            parent_dir = self.database.removesuffix(os.path.basename(self.database))
             if parent_dir: 
                 os.makedirs(parent_dir, exist_ok=True)
 
-        elif force_drop:
+        elif force_drop is True:
             self.drop_table()
+
+        self.create_table()
 
     
     def _validate_attributes(self):
@@ -59,12 +76,6 @@ class SqlTableMixin:
             raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
 
 
-    
-    def _insert_args(self, *args):
-        query = sql.insert_row(self.tablename, self.columns)
-        self.execute(query, args)
-
-
     @staticmethod
     def _flatten_rows(rows : Sequence[Iterable]):
         return [item for row in rows for item in row]
@@ -72,7 +83,7 @@ class SqlTableMixin:
     
     def connect(self) -> sqlite3.Connection:
         """ Shortcut to connection context manager """
-        return sqlite3.connect(self.db_filename)
+        return sqlite3.connect(self.database, **self.connection_params)
     
 
     @contextmanager
@@ -85,13 +96,14 @@ class SqlTableMixin:
         self._trans = self.connect()
         self._trans_cursor = self._trans.cursor()
         
+        logger.debug(f"{self.__class__.__name__}: Transaction started")
+        
         try:
-            logger.debug(f"{self.__class__.__name__}: Transaction started")
             yield
 
         except Exception as e:
-            logger.error(f"{self.__class__.__name__}: Error while in transaction:")
-            logger.error(e, exc_info=True)
+            logger.error(f"{self.__class__.__name__}: Error while in transaction: {e}")
+            logger.debug(e, exc_info=True)
             self._trans.rollback()
             raise e
         
@@ -99,10 +111,10 @@ class SqlTableMixin:
             self._trans.commit()
 
         finally:
-            logger.debug(f"{self.__class__.__name__}: Transaction finished")
             self._trans.close()
             del(self._trans)
             del(self._trans_cursor)
+            logger.debug(f"{self.__class__.__name__}: Transaction finished")
 
     
     def in_transaction(self) -> bool:
@@ -117,7 +129,7 @@ class SqlTableMixin:
 
     def _fetch(self, query : str, method : Literal["fetchone", "fetchall", "fetchmany"], *args) -> SqlRow | list[SqlRow]:
         
-        logger.debug(f"{self.__class__.__name__}.{method}(): {query}")
+        logger.debug(f"{self.__class__.__name__}: {query}")
 
         if self.in_transaction():
             self._trans_cursor.execute(query)
@@ -132,10 +144,14 @@ class SqlTableMixin:
     def execute(self, query : str, *args) -> None:
         """
         Shortcut to connect() -> execute() -> commit() for single operations. 
-        Can be used in transaction using `transaction()` manager 
+        Can be used in transaction using `transaction()` manager.
+
+        Args:
+            query (str): SQL query to execute on SQLite3 DB
+            *args (Any): Arguments to the execution
         """
 
-        logger.debug(f"{self.__class__.__name__}: {query} {self._flatten_rows(args) or ''}")
+        logger.debug(f"{self.__class__.__name__}: {query} {args}")
 
         if self.in_transaction():
             self._trans_cursor.execute(query, *args)
@@ -145,9 +161,21 @@ class SqlTableMixin:
             cursor = conn.cursor()
             cursor.execute(query, *args)
             conn.commit()
+    
+    
+    def create_table(self):
+        """ Create table if not exists """
+       
+        query = sql.create_table(
+            self.tablename, self.columns, 
+            self.types, self.primary
+        )
+
+        self.execute(query)
 
 
     def drop_table(self):
+        """ Drops table if it exists. """
         self.execute(sql.drop_table(self.tablename))
 
 
@@ -162,19 +190,14 @@ class SqlTableMixin:
     def fetchall(self, query : str) -> list[SqlRow]:
         return self._fetch(query, "fetchall")
     
-
-    def create_table(self):
-        """ Create table if not exists """
-       
-        query = sql.create_table(
-            self.tablename, self.columns, 
-            self.types, self.primary
-        )
-
-        self.execute(query)
     
+    def insert(self, *args, **kwargs):
+        """ Insert single row. """
+        query = sql.insert_row(self.tablename, self.columns)
+        self.execute(query, args, **kwargs)
 
-    def insert_many(self, rows: list[tuple]) -> None:
+    
+    def insert_many(self, rows: Sequence[SqlRow]) -> None:
         """
         Insert multiple rows in a single transaction.
         
@@ -183,7 +206,7 @@ class SqlTableMixin:
                 in the order of __columns__
         """
         
-        query = sql.bulk_insert(self.tablename, self.columns, len(rows))
+        query = sql.insert_many(self.tablename, self.columns, len(rows))
         flat_args = self._flatten_rows(rows)
         
         return self.execute(query, flat_args)
@@ -193,12 +216,17 @@ class SqlTableMixin:
         """ Yields all rows in batches, each batch in its own transaction. """
 
         if not self.in_transaction():
-            raise RuntimeError(("To use `fetchall_iterator()` method, first you have "
-                                "to keep open transaction using `transaction()` manager"))
+            raise RuntimeError(
+                (
+                    "To use the `fetchall_iterator()` method you have "
+                    "to keep open the transaction with `transaction()` manager"
+                )
+            )
 
-        self._trans_cursor.execute(query)
+        iter_cursor = self._trans.cursor()
+        iter_cursor.execute(query)
 
-        while batch := self._trans_cursor.fetchmany(batch_size):
+        while batch := iter_cursor.fetchmany(batch_size):
             yield batch
         
     
@@ -219,33 +247,58 @@ class SqlTableMixin:
         return self.fetchall(query)
     
 
-    def select_eq(
-            self, 
-            column : str, 
-            equals : SqlValue | Sequence[SqlValue],
-            return_columns : str | list[str] = "*"
-        ) -> list[SqlRow]:
+    def select_eq(self, column : str, equals : SqlValue | Sequence[SqlValue], return_columns : str | list[str] = "*") -> list[SqlRow]:
         """ Returns rows or `return_columns` of rows where `column` value is equal to `equals` """
         where_clause = sql.where_equals(column, equals)
         return self.select(return_columns, where_clause)
     
 
+    def update(self, where_clause : str, set_values : dict[str, SqlValue]):
+        """
+        Updates columns based on `where_clause` 
+    
+        Args:
+            where_clause (str): describes search filter with SQL condition query
+            set_values (dict[str, SqlValue]): dict where keys are column names and
+                values are corresponding new values to set
+        """
+        
+        query = sql.update(self.tablename, where_clause, set_values)
+        self.execute(query)
+    
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
-            f"db_filename={self.db_filename}, "
-            f"table={self.tablename}, "
+            f"database={self.database}, "
+            f"tablename={self.tablename}, "
             f"columns={sql.format_list(self.columns)}, "
-            f"primary_key={sql.format_list(self.primary)}"
-            f")"
+            f"primary_key={sql.format_list(self.primary)})"
         )
     
 
-    @abstractmethod
-    def insert(self, *args, **kwargs) -> None:
-        """ Insert single row. """
-        self._insert_args(*args, **kwargs)
-        raise NotImplementedError("Declare this method with correct types")
+    def __len__(self) -> int:
+        length = self.fetchone(sql.count(self.tablename))[0]
+        if not isinstance(length, int):
+            return 0
+        return length
+    
+
+    def __iter__(self) -> Generator[SqlRow, None, None]:
+        """ Database rows iterator """
+        if not self.in_transaction():
+            raise RuntimeError(
+                (
+                    "To use the __iter__ method you have "
+                    "to keep open the transaction with `transaction()` manager"
+                )
+            )
+        
+        iter_cursor = self._trans.cursor()
+        iter_cursor.execute(sql.select(self.tablename))
+
+        while row := iter_cursor.fetchone(): 
+            yield row
     
 
     @property

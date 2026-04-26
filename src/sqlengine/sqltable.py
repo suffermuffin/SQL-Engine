@@ -17,7 +17,7 @@ class SqlTableMixin:
     Args:
         database (str): database filename to connect to. If it not exists - will create new one first.
             If `":memory:"` is passed, then database will be created in memory and you will have to
-            create table manually with `create_table()` method insed `transaction()` block.
+            create table manually with `create_table()` method inside `transaction()` block.
         force_drop (bool): If `True` - will drop existing table.
         **connection_params (dict): Params to create connection with. 
             Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
@@ -41,7 +41,7 @@ class SqlTableMixin:
     def _validate_write_db(self, force_drop : bool):
 
         if self.database == ":memory:":
-            logger.debug(f"{self.__class__.__name__}: Using in memory database")
+            logger.debug(f"{self.__class__.__name__}: Using in-memory database")
             return
 
         if not self.database.endswith('.db'):
@@ -77,7 +77,7 @@ class SqlTableMixin:
 
 
     @staticmethod
-    def _flatten_rows(rows : Sequence[Iterable]):
+    def _flatten_rows(rows : Sequence[Iterable]) -> list[SqlValue]:
         return [item for row in rows for item in row]
     
     
@@ -163,7 +163,7 @@ class SqlTableMixin:
             conn.commit()
     
     
-    def create_table(self):
+    def create_table(self) -> None:
         """ Create table if not exists """
        
         query = sql.create_table(
@@ -174,7 +174,7 @@ class SqlTableMixin:
         self.execute(query)
 
 
-    def drop_table(self):
+    def drop_table(self) -> None:
         """ Drops table if it exists. """
         self.execute(sql.drop_table(self.tablename))
 
@@ -191,7 +191,7 @@ class SqlTableMixin:
         return self._fetch(query, "fetchall")
     
     
-    def insert(self, *args, **kwargs):
+    def insert(self, *args, **kwargs) -> None:
         """ Insert single row. """
         query = sql.insert_row(self.tablename, self.columns)
         self.execute(query, args, **kwargs)
@@ -212,7 +212,7 @@ class SqlTableMixin:
         return self.execute(query, flat_args)
     
 
-    def fetchall_iterator(self, query: str, batch_size: int = 1000) -> Generator[list[SqlRow], None, None]:
+    def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
         """ Yields all rows in batches, each batch in its own transaction. """
 
         if not self.in_transaction():
@@ -253,7 +253,7 @@ class SqlTableMixin:
         return self.select(return_columns, where_clause)
     
 
-    def update(self, where_clause : str, set_values : dict[str, SqlValue]):
+    def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
         """
         Updates columns based on `where_clause` 
     
@@ -265,9 +265,15 @@ class SqlTableMixin:
         
         query = sql.update(self.tablename, where_clause, set_values)
         self.execute(query)
+
+
+    def upsert(self, *args, **kwargs) -> None:
+        """ Upsert (update or insert) single row """
+        query = sql.upsert(self.tablename, self.columns, self.primary)
+        self.execute(query, args, **kwargs)
     
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"database={self.database}, "

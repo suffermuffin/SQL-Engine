@@ -5,7 +5,7 @@ My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without
 
 ## Features
 
-Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_rows`. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `fetchall_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
+Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_rows`, `update`, `upsert`, etc. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `fetchall_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
 
 
 ## Purpose
@@ -22,7 +22,7 @@ git clone --depth 1 https://github.com/suffermuffin/SQL-Engine.git
 pip install -e .
 ```
 
-Or you may add this package as a git submodule:
+Or you may add this package as a `git submodule`:
 
 ```sh
 git submodule add --depth 1 https://github.com/suffermuffin/SQL-Engine.git /path/to/submodules/sqlengine
@@ -41,6 +41,15 @@ All you have to do to create your own cute little table is to inherit `SqlTableM
    - *(list[str])* List of one or more primary keys
  - **\_\_tablename\_\_**
    - *(str)* Name of the table
+
+
+## Env
+
+You may set environment variable for logging. By default it's `WARNING`
+
+```console
+SQL_ENGINE_LOG_LEVEL=INFO
+```
 
 ### Example in code
 
@@ -87,7 +96,7 @@ employees_table.insert(0, 'John', 'CEO')
 
 ```sql
 -- Debug output --
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [0, 'John', 'CEO']
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); (0, 'John', 'CEO')
 ```
 
 ---
@@ -100,7 +109,7 @@ employees_table.insert_many(workers)
 
 ```sql
 -- Debug output --
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?); [1, 'Boris', 'worker', 2, 'George', 'worker', 3, 'Kate', 'worker']
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
 ```
 
 ---
@@ -123,8 +132,8 @@ with employees_table.transaction():
 ```sql
 -- Debug output --
 Employees: Transaction started
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?), (?, ?, ?); [4, 'Angela', 'seller', 5, 'Mark', 'seller']
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?), (?, ?, ?); [6, 'Max', 'seller', 7, 'Maria', 'seller']
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
+Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(6, 'Max', 'seller'), (7, 'Maria', 'seller')]
 Employees: Transaction finished
 ```
 
@@ -140,7 +149,7 @@ employees_table.select_eq('Occupation', 'CEO', return_columns=['Name', 'ID'])
 
 ```sql
 -- Debug output --
-Employees.fetchall(): SELECT Name, ID FROM EmployeesDB WHERE Occupation = "CEO";
+Employees: SELECT Name, ID FROM EmployeesDB WHERE Occupation = "CEO";
 ```
 
 ---
@@ -158,7 +167,7 @@ employees_table.select_eq('Occupation', equals=['worker', 'CEO'])
 
 ```sql
 -- Debug output --
-Employees.fetchall(): SELECT * FROM EmployeesDB WHERE Occupation in ("worker", "CEO");
+Employees: SELECT * FROM EmployeesDB WHERE Occupation in ("worker", "CEO");
 ```
 
 ---
@@ -191,7 +200,7 @@ employees_table.select()
 
 ```sql
 -- Debug output --
-Employees.fetchall(): SELECT * FROM EmployeesDB;
+Employees: SELECT * FROM EmployeesDB;
 ```
 
 **Create transaction rows batch generator**

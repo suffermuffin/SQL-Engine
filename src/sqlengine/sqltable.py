@@ -2,22 +2,23 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterable, Sequence, Literal, Generator, overload
+from typing import Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
 from .utils.types import SqlRow, SqlValue
 
 logger = logging.getLogger(__name__)
+logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 
 class SqlTableMixin:
     """
-    Lightweighted wrapper for SQLite3 tables
+    Lightweight wrapper for SQLite3 tables
     
     Args:
         database (str): database filename to connect to. If it not exists - will create new one first.
             If `":memory:"` is passed, then database will be created in memory and you will have to
-            create table manually with `create_table()` method insed `transaction()` block.
+            create table manually with `create_table()` method inside `transaction()` block.
         force_drop (bool): If `True` - will drop existing table.
         **connection_params (dict): Params to create connection with. 
             Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
@@ -37,11 +38,11 @@ class SqlTableMixin:
         self._validate_attributes()
         self._validate_write_db(force_drop)
 
-    
+
     def _validate_write_db(self, force_drop : bool):
 
         if self.database == ":memory:":
-            logger.debug(f"{self.__class__.__name__}: Using in memory database")
+            logger.debug(f"{self.__class__.__name__}: Using in-memory database")
             return
 
         if not self.database.endswith('.db'):
@@ -76,22 +77,28 @@ class SqlTableMixin:
             raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
 
 
-    @staticmethod
-    def _flatten_rows(rows : Sequence[Iterable]):
-        return [item for row in rows for item in row]
-    
-    
     def connect(self) -> sqlite3.Connection:
-        """ Shortcut to connection context manager """
+        """ Shortcut to sqlite3 connection context manager """
         return sqlite3.connect(self.database, **self.connection_params)
     
 
     @contextmanager
     def transaction(self): 
-        """ Creates context manager to use class methods in transaction """
+        """ 
+        Creates context manager to use class methods in transaction 
+        
+        Examples:
+
+            >>> from src.sqlengine import sqlgen as sql
+            >>> with table.transaction():
+            >>>     for idx, name, age in table:
+            >>>         where = sql.where_equals("ID", idx)
+            >>>         table.update(where, {"Age" : age + 1})
+            >>>     print(table.select())
+        """
 
         if self.in_transaction():
-            raise RuntimeError("Nested transactions are not permited")
+            raise RuntimeError("Nested transactions are not permitted")
 
         self._trans = self.connect()
         self._trans_cursor = self._trans.cursor()
@@ -139,31 +146,32 @@ class SqlTableMixin:
             cursor = conn.cursor()
             cursor.execute(query)
             return getattr(cursor, method)(*args)
-
+        
     
-    def execute(self, query : str, *args) -> None:
+    def execute(self, query : str, *args, method : Literal["execute", "executemany"] = "execute") -> None:
         """
-        Shortcut to connect() -> execute() -> commit() for single operations. 
+        Shortcut to connect() -> execute[<many>]() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
             *args (Any): Arguments to the execution
+            method (str): "execute" or "executemany"
         """
 
-        logger.debug(f"{self.__class__.__name__}: {query} {args}")
+        logger.debug(f"{self.__class__.__name__}: {query} {args[0] if args else ''}")
 
         if self.in_transaction():
-            self._trans_cursor.execute(query, *args)
+            getattr(self._trans_cursor, method)(query, *args)
             return
         
         with self.connect() as conn:
             cursor = conn.cursor()
-            cursor.execute(query, *args)
+            getattr(cursor, method)(query, *args)
             conn.commit()
     
     
-    def create_table(self):
+    def create_table(self) -> None:
         """ Create table if not exists """
        
         query = sql.create_table(
@@ -174,46 +182,98 @@ class SqlTableMixin:
         self.execute(query)
 
 
-    def drop_table(self):
+    def drop_table(self) -> None:
         """ Drops table if it exists. """
         self.execute(sql.drop_table(self.tablename))
 
 
     def fetchone(self, query : str) -> SqlRow:
+        """
+        Fetch first row based on `query`
+
+        Args:
+            query (str): SQL query
+
+        Returns:
+            out (SqlRow): Single row
+        """
         return self._fetch(query, "fetchone")
     
 
     def fetchmany(self, query : str, size : int = 1) -> list[SqlRow]:
+        """
+        Fetch first `size` rows based on `query`
+
+        Args:
+            query (str): SQL query
+            size (str): Number of rows to return
+
+        Returns:
+            out (list[SqlRow]): list of `size` rows
+        """
         return self._fetch(query, "fetchmany", size)
     
 
     def fetchall(self, query : str) -> list[SqlRow]:
+        """
+        Fetch all rows based on `query`
+
+        Args:
+            query (str): SQL query
+
+        Returns:
+            out (list[SqlRow]): list of rows
+        """
         return self._fetch(query, "fetchall")
     
     
-    def insert(self, *args, **kwargs):
-        """ Insert single row. """
+    def insert(self, *args, **kwargs) -> None:
+        """ 
+        Insert single row
+
+        Args:
+            *args (Any): Arguments in order of declared __columns__
+            **kwargs (Any): Unused
+
+        Example:
+            >>> table = MyTable("mydb.db")
+            >>> table.columns 
+            >>> # ["ID", "Name", "Age"]
+            >>> table.insert(0, "Daniel", 27)
+        """
         query = sql.insert_row(self.tablename, self.columns)
-        self.execute(query, args, **kwargs)
+        self.execute(query, args)
 
     
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
         """
-        Insert multiple rows in a single transaction.
+        Bulk insert multiple rows
         
         Args:
-            rows: List of tuples, each tuple contains values for one row
-                in the order of __columns__
+            rows (list[tuples]): List of tuples, each tuple contains 
+                values for one row in the order of __columns__
         """
-        
-        query = sql.insert_many(self.tablename, self.columns, len(rows))
-        flat_args = self._flatten_rows(rows)
-        
-        return self.execute(query, flat_args)
+        query = sql.insert_row(self.tablename, self.columns)
+        return self.execute(query, rows, method="executemany")
     
 
-    def fetchall_iterator(self, query: str, batch_size: int = 1000) -> Generator[list[SqlRow], None, None]:
-        """ Yields all rows in batches, each batch in its own transaction. """
+    def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
+        """
+        Yields all rows in batches, each batch in its own transaction.
+        
+        Args:
+            query (str): SQL query
+            batch_size (int): Size of each batch
+
+        Examples:
+
+            >>> from sqlengine import sqlgen as sql
+            >>> where = sql.where("Age" ">" 30)
+            >>> query = sql.select(table.tablename, where)
+            >>> with table.transaction():
+            >>>     for batch in table.fetchall_iterator(query, 1000):
+            >>>         process_batch(batch)
+        """
 
         if not self.in_transaction():
             raise RuntimeError(
@@ -242,18 +302,56 @@ class SqlTableMixin:
     
     
     def select(self, columns : str | list[str] = "*", where_clause : str | None = None) -> list[SqlRow]:
-        """Select rows from the table."""
+        """
+        Fetch all rows of `columns` from the table with optional `where_clause` filter.\n
+        This executes query in form of "SELECT `columns` FROM table WHERE `where_clause`"
+        
+        Args:
+            columns (str | list[str]): columns of which rows to return. If "*" is provided -
+                returns all.
+            where_clause (str): describes search filter with SQL condition query
+        
+        Returns:
+            out (list[SqlRow]): list of all rows, where values are in order of provided
+                `columns`
+
+        Examples:
+
+            >>> from sqlengine import sqlgen as sql
+            >>> where = sql.where("Occupation", "IN", ["seller", "worker"])
+            >>> table.select(["ID", "Name"], where)
+            >>> table.select("*", "ID = 0")
+        """
         query = sql.select(self.tablename, columns, where_clause)
         return self.fetchall(query)
     
 
     def select_eq(self, column : str, equals : SqlValue | Sequence[SqlValue], return_columns : str | list[str] = "*") -> list[SqlRow]:
-        """ Returns rows or `return_columns` of rows where `column` value is equal to `equals` """
+        """ 
+        Returns rows or `return_columns` of rows where `column` value is equal to `equals`.
+        Interface/shortcut for `select` method. This executes query in form of
+        "SELECT `return_columns` FROM table WHERE `column` [= | IN] `equals`"
+        
+        Args:
+            column (str): column which rows to compare to `equals`.
+            equals (SqlValue | list[SqlValue]): values to search for in `column`.
+            return_columns (str | list[str]): rows of which columns to return. If "*" is provided -
+                returns all.
+        
+        Returns:
+            out (list[SqlRow]): list of all rows, where values are in order of provided
+                `return_columns`
+
+        Examples:
+
+            >>> table.select_eq("Occupation", ["seller", "worker"], ["ID", "Name"])
+            >>> table.select_eq("ID", 0, "*")
+        """
         where_clause = sql.where_equals(column, equals)
         return self.select(return_columns, where_clause)
     
 
-    def update(self, where_clause : str, set_values : dict[str, SqlValue]):
+    def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
         """
         Updates columns based on `where_clause` 
     
@@ -261,13 +359,40 @@ class SqlTableMixin:
             where_clause (str): describes search filter with SQL condition query
             set_values (dict[str, SqlValue]): dict where keys are column names and
                 values are corresponding new values to set
+
+        Example:
+            >>> # This will set "unemployed" as Occupation and 0.0 as Salary
+            >>> # for all the salespeople and CEO
+            >>> from sqlengine import sqlgen as sql
+            >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
+            >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})
         """
         
         query = sql.update(self.tablename, where_clause, set_values)
         self.execute(query)
+
+
+    def upsert(self, *args, **kwargs) -> None:
+        """ 
+        Upsert (update or insert) single row, resolving conflicts
+        via the declared `primary` key
+        
+        Args:
+            *args (Any): Arguments in order of declared __columns__
+            **kwargs (Any): Unused
+
+        Example:
+            >>> table = MyTable("mydb.db")
+            >>> table.columns 
+            >>> # ["ID", "Name", "Age"]
+            >>> table.upsert(0, "Daniel", 27)
+            >>> table.upsert(0, "Daniel", 21)
+        """
+        query = sql.upsert(self.tablename, self.columns, self.primary)
+        self.execute(query, args, **kwargs)
     
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"database={self.database}, "
@@ -303,19 +428,23 @@ class SqlTableMixin:
 
     @property
     def columns(self) -> list[str]:
+        """ List of table column names """
         return self.__columns__
 
     
     @property
     def types(self) -> list[str]:
+        """ List of table column dtypes """
         return self.__types__
 
     
     @property
     def primary(self) -> list[str]:
+        """ List of table column primary keys """
         return self.__primary__
 
     
     @property
     def tablename(self) -> str:
+        """ Name of the table """
         return self.__tablename__

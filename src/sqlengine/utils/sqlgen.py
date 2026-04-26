@@ -1,8 +1,8 @@
-from typing import Sequence, Literal
+from typing import Sequence, Literal, Sequence
 from .types import SqlValue
 
 
-def format_list(items : list, brakets : bool = True) -> str:
+def format_list(items : Sequence | set, brakets : bool = True) -> str:
     """ Formats list into `(item1, item2, ...)` format """
     items_str = ', '.join([str(i) for i in items])
     if not brakets: 
@@ -118,7 +118,7 @@ def count(tablename : str, columns : str | list[str] = "*", where_clause : str |
     return query
 
 
-def update(tablename : str, where_clause : str, set_values : dict[str, SqlValue]):
+def update(tablename : str, where_clause : str, set_values : dict[str, SqlValue]) -> str:
     """ 
     Creates query to update columns based on `where_clause` 
     
@@ -138,4 +138,28 @@ def update(tablename : str, where_clause : str, set_values : dict[str, SqlValue]
     set_to = format_list(new_sets, False)
 
     return f"UPDATE {tablename} SET {set_to} WHERE {where_clause};"
+
+
+def upsert(tablename : str, columns : list[str], primary_key : list[str]) -> str:
+    """
+    Creates query to upsert (update or insert) row based on `primary_key`
+
+    Args:
+        tablename (str): name of the table in db
+        columns (list[str]): list of table columns
+        primary_key (list[str]): list of primary keys
+    """
+
+    placeholder  = values_placeholder(len(columns))
+    non_primary  = set(columns) - set(primary_key)
+    updated_list = [f"{col}=excluded.{col}" for col in non_primary]
+    updated      = format_list(updated_list, False)
+    
+    query = (
+        f"INSERT INTO {tablename} {format_list(columns)} VALUES {placeholder} "
+        f"ON CONFLICT {format_list(primary_key)} "
+        f"DO UPDATE SET {updated};"
+    )
+    return query
+
 

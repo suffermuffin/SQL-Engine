@@ -1,6 +1,6 @@
 # Sql-Engine
 
-My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies **(vibe-code free!)**.
+My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies **(vibe-code free!)**
 
 
 ## Features
@@ -8,26 +8,39 @@ My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without
 Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_rows`. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `fetchall_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
 
 
+## Purpose
+
+It's a tiny little modern projects that lets you prototype your databases locally with great flexability. Also, it can be used in small production apps like chat bots to store data, but **beware! Security might be flowed, proof query execution beforehand.** In other cases, sure, use it as you like.
+
+
 ## Installation
 
 To install `sqlengine`, you can use `pip`:
 
 ```sh
-pip install -e . sqlengine
+git clone --depth 1 https://github.com/suffermuffin/SQL-Engine.git
+pip install -e .
+```
+
+Or you may add this package as a git submodule:
+
+```sh
+git submodule add --depth 1 https://github.com/suffermuffin/SQL-Engine.git /path/to/submodules/sqlengine
+pip install -e ./path/to/submodules/sqlengine
 ```
 
 ## Usage
 
 All you have to do to create your own cute little table is to inherit `SqlTableMixin` class and declare desired properties of your table's columns. They are:
 
- - \_\_columns\_\_ 
-   - (list[str]) Column names of the table
- - \_\_types\_\_
-   - (list[str]) Types of declared columns
- - \_\_primary\_\_
-   - (list[str]) List of one or more primary keys
- - \_\_tablename\_\_
-   - (str) Name of the table
+ - **\_\_columns\_\_** 
+   - *(list[str])* Column names of the table
+ - **\_\_types\_\_**
+   - *(list[str])* Types of declared columns
+ - **\_\_primary\_\_**
+   - *(list[str])* List of one or more primary keys
+ - **\_\_tablename\_\_**
+   - *(str)* Name of the table
 
 ### Example in code
 
@@ -43,9 +56,12 @@ class Employees(SqlTableMixin):
     __primary__   : list[str] = ["ID"]
     __tablename__ : str = "EmployeesDB"
 
-    # You may overwrite your insert method for type consistancy
+    # You may overwrite your insert methods for type consistancy
     def insert(self, id : int, name : str, occupation : str) -> None:
         return super().insert(id, name, occupation)
+    
+    def upsert(self, id : int, name : str, occupation : str) -> None:
+        return super().upsert(id, name, occupation)
 
 ```
 ---

@@ -2,7 +2,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterable, Sequence, Literal, Generator, overload
+from typing import Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
 from .utils.types import SqlRow, SqlValue
@@ -77,11 +77,6 @@ class SqlTableMixin:
             raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
 
 
-    @staticmethod
-    def _flatten_rows(rows : Sequence[Iterable]) -> list[SqlValue]:
-        return [item for row in rows for item in row]
-    
-    
     def connect(self) -> sqlite3.Connection:
         """ Shortcut to sqlite3 connection context manager """
         return sqlite3.connect(self.database, **self.connection_params)
@@ -151,27 +146,28 @@ class SqlTableMixin:
             cursor = conn.cursor()
             cursor.execute(query)
             return getattr(cursor, method)(*args)
-
+        
     
-    def execute(self, query : str, *args) -> None:
+    def execute(self, query : str, *args, method : Literal["execute", "executemany"] = "execute") -> None:
         """
-        Shortcut to connect() -> execute() -> commit() for single operations. 
+        Shortcut to connect() -> execute[<many>]() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
             *args (Any): Arguments to the execution
+            method (str): "execute" or "executemany"
         """
 
-        logger.debug(f"{self.__class__.__name__}: {query} {args}")
+        logger.debug(f"{self.__class__.__name__}: {query} {args[0] if args else ''}")
 
         if self.in_transaction():
-            self._trans_cursor.execute(query, *args)
+            getattr(self._trans_cursor, method)(query, *args)
             return
         
         with self.connect() as conn:
             cursor = conn.cursor()
-            cursor.execute(query, *args)
+            getattr(cursor, method)(query, *args)
             conn.commit()
     
     
@@ -246,7 +242,7 @@ class SqlTableMixin:
             >>> table.insert(0, "Daniel", 27)
         """
         query = sql.insert_row(self.tablename, self.columns)
-        self.execute(query, args, **kwargs)
+        self.execute(query, args)
 
     
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
@@ -257,11 +253,8 @@ class SqlTableMixin:
             rows (list[tuples]): List of tuples, each tuple contains 
                 values for one row in the order of __columns__
         """
-        
-        query = sql.insert_many(self.tablename, self.columns, len(rows))
-        flat_args = self._flatten_rows(rows)
-        
-        return self.execute(query, flat_args)
+        query = sql.insert_row(self.tablename, self.columns)
+        return self.execute(query, rows, method="executemany")
     
 
     def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
@@ -369,7 +362,7 @@ class SqlTableMixin:
 
         Example:
             >>> # This will set "unemployed" as Occupation and 0.0 as Salary
-            >>> # For all the salespeople and CEO
+            >>> # for all the salespeople and CEO
             >>> from sqlengine import sqlgen as sql
             >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
             >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})

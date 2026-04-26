@@ -43,9 +43,9 @@ class Employees(SqlTableMixin):
     __primary__   : list[str] = ["ID"]
     __tablename__ : str = "EmployeesDB"
 
-    # overwrite your insert method for type consistancy
+    # You may overwrite your insert method for type consistancy
     def insert(self, id : int, name : str, occupation : str) -> None:
-        return self._insert_args(id, name, occupation)
+        return super().insert(id, name, occupation)
 
 ```
 ---

@@ -23,17 +23,25 @@ class SqlTableMixin:
         **connection_params (dict): Params to create connection with. 
             Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
 
+    Attributes:
+        __tablename__ (Optional[str]): Name of the table that will be used in queries. 
+            If omitted in inherited class declaration, then it will take the class name.
+        __columns__ (list[str]): Colum names of the table
+        __types__ (list[str]): Colum types of the table
+        __primary__ (list[str]): List of primary keys
     """
 
+    __tablename__ : str
     __columns__   : list[str]
     __types__     : list[str]
     __primary__   : list[str]
-    __tablename__ : str
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
         self.database = database
+
         self.connection_params = connection_params
+        
 
         self._validate_attributes()
         self._validate_write_db(force_drop)
@@ -42,39 +50,47 @@ class SqlTableMixin:
     def _validate_write_db(self, force_drop : bool):
 
         if self.database == ":memory:":
-            logger.debug(f"{self.__class__.__name__}: Using in-memory database")
+            logger.debug(f"{self.tablename}: Using in-memory database")
             return
-
-        if not self.database.endswith('.db'):
-            raise ValueError("`database` must have '.db' extension")
         
         if not os.path.exists(self.database):
-            logger.info(f'{self.__class__.__name__}: {self.database} does not exist. Creating...')
+            logger.info(f'{self.tablename}: {self.database} does not exist. Creating...')
             parent_dir = self.database.removesuffix(os.path.basename(self.database))
             if parent_dir: 
                 os.makedirs(parent_dir, exist_ok=True)
 
         elif force_drop is True:
-            self.drop_table()
+            self.drop_table(confirm=True)
 
         self.create_table()
 
     
     def _validate_attributes(self):
 
+        if not hasattr(self, "__tablename__"):
+            self.__tablename__ = self.__class__.__name__
+
         missing_attrs = [
             attr for attr in 
-            [ "__columns__", "__types__", "__primary__", "__tablename__"] 
+            [ "__columns__", "__types__", "__primary__"] 
             if not hasattr(self, attr)
         ]
 
         if missing_attrs:
-            raise AttributeError(f'{self.__class__.__name__} is missing attributes: {missing_attrs}')
+            raise AttributeError(f'{self.tablename} is missing attributes: {missing_attrs}')
         
         n_types, n_cols = len(self.__types__), len(self.__columns__)
 
         if not n_types == n_cols:
             raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
+        
+        wrong_primaries = [
+            prim for prim in self.__primary__ if
+            prim not in self.__columns__
+        ]
+
+        if wrong_primaries:
+            raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
 
 
     def connect(self) -> sqlite3.Connection:
@@ -103,13 +119,13 @@ class SqlTableMixin:
         self._trans = self.connect()
         self._trans_cursor = self._trans.cursor()
         
-        logger.debug(f"{self.__class__.__name__}: Transaction started")
+        logger.debug(f"{self.tablename}: Transaction started")
         
         try:
             yield
 
         except Exception as e:
-            logger.error(f"{self.__class__.__name__}: Error while in transaction: {e}")
+            logger.error(f"{self.tablename}: Error while in transaction: {e}")
             logger.debug(e, exc_info=True)
             self._trans.rollback()
             raise e
@@ -119,9 +135,9 @@ class SqlTableMixin:
 
         finally:
             self._trans.close()
-            del(self._trans)
             del(self._trans_cursor)
-            logger.debug(f"{self.__class__.__name__}: Transaction finished")
+            del(self._trans)
+            logger.debug(f"{self.tablename}: Transaction finished")
 
     
     def in_transaction(self) -> bool:
@@ -136,7 +152,7 @@ class SqlTableMixin:
 
     def _fetch(self, query : str, method : Literal["fetchone", "fetchall", "fetchmany"], *args) -> SqlRow | list[SqlRow]:
         
-        logger.debug(f"{self.__class__.__name__}: {query}")
+        logger.debug(f"{self.tablename}: {query}")
 
         if self.in_transaction():
             self._trans_cursor.execute(query)
@@ -148,7 +164,7 @@ class SqlTableMixin:
             return getattr(cursor, method)(*args)
         
     
-    def execute(self, query : str, *args, method : Literal["execute", "executemany"] = "execute") -> None:
+    def _execute(self, query : str, *args, method : Literal["execute", "executemany"] = "execute") -> None:
         """
         Shortcut to connect() -> execute[<many>]() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
@@ -159,7 +175,7 @@ class SqlTableMixin:
             method (str): "execute" or "executemany"
         """
 
-        logger.debug(f"{self.__class__.__name__}: {query} {args[0] if args else ''}")
+        logger.debug(f"{self.tablename}: {query} {args[0] if args else ''}")
 
         if self.in_transaction():
             getattr(self._trans_cursor, method)(query, *args)
@@ -169,6 +185,30 @@ class SqlTableMixin:
             cursor = conn.cursor()
             getattr(cursor, method)(query, *args)
             conn.commit()
+
+
+    def execute(self, query : str, *args) -> None:
+        """
+        Shortcut to connect() -> execute() -> commit() for single operations. 
+        Can be used in transaction using `transaction()` manager.
+
+        Args:
+            query (str): SQL query to execute on SQLite3 DB
+            *args (tuple[SqlValue]): Arguments to the execution
+        """
+        return self._execute(query, *args, method="execute")
+    
+    
+    def executemany(self, query : str, *args) -> None:
+        """
+        Shortcut to connect() -> executemany() -> commit() for single operations. 
+        Can be used in transaction using `transaction()` manager.
+
+        Args:
+            query (str): SQL query to execute on SQLite3 DB
+            *args (list[tuple[SqlValue]]): Arguments to the execution
+        """
+        return self._execute(query, *args, method="executemany")
     
     
     def create_table(self) -> None:
@@ -182,8 +222,11 @@ class SqlTableMixin:
         self.execute(query)
 
 
-    def drop_table(self) -> None:
+    def drop_table(self, confirm : bool = False) -> None:
         """ Drops table if it exists. """
+        if not confirm:
+            logger.warning("Pass `confirm=True` to drop the table")
+            return
         self.execute(sql.drop_table(self.tablename))
 
 
@@ -245,50 +288,58 @@ class SqlTableMixin:
         self.execute(query, args)
 
     
+    def upsert(self, *args, **kwargs) -> None:
+        """ 
+        Upsert (update or insert) single row, resolving conflicts
+        via the declared `primary` key
+        
+        Args:
+            *args (Any): Arguments in order of declared __columns__
+            **kwargs (Any): Unused
+
+        Example:
+            >>> table = MyTable("mydb.db")
+            >>> table.columns 
+            >>> # ["ID", "Name", "Age"]
+            >>> table.upsert(0, "Daniel", 27)
+            >>> table.upsert(0, "Daniel", 21)
+        """
+        query = sql.upsert(self.tablename, self.columns, self.primary)
+        self.execute(query, args)
+
+    
+    def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
+        """
+        Updates columns based on `where_clause` 
+    
+        Args:
+            where_clause (str): describes search filter with SQL condition query
+            set_values (dict[str, SqlValue]): dict where keys are column names and
+                values are corresponding new values to set
+
+        Example:
+            >>> # This will set "unemployed" as Occupation and 0.0 as Salary
+            >>> # for all the salespeople and CEO
+            >>> from sqlengine import sqlgen as sql
+            >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
+            >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})
+        """
+        
+        query = sql.update(self.tablename, where_clause, set_values)
+        self.execute(query)
+
+
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
         """
         Bulk insert multiple rows
         
         Args:
-            rows (list[tuples]): List of tuples, each tuple contains 
+            rows (list[SqlRow]): List of tuples, each tuple contains 
                 values for one row in the order of __columns__
         """
         query = sql.insert_row(self.tablename, self.columns)
-        return self.execute(query, rows, method="executemany")
+        return self.executemany(query, rows)
     
-
-    def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
-        """
-        Yields all rows in batches, each batch in its own transaction.
-        
-        Args:
-            query (str): SQL query
-            batch_size (int): Size of each batch
-
-        Examples:
-
-            >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Age" ">" 30)
-            >>> query = sql.select(table.tablename, where)
-            >>> with table.transaction():
-            >>>     for batch in table.fetchall_iterator(query, 1000):
-            >>>         process_batch(batch)
-        """
-
-        if not self.in_transaction():
-            raise RuntimeError(
-                (
-                    "To use the `fetchall_iterator()` method you have "
-                    "to keep open the transaction with `transaction()` manager"
-                )
-            )
-
-        iter_cursor = self._trans.cursor()
-        iter_cursor.execute(query)
-
-        while batch := iter_cursor.fetchmany(batch_size):
-            yield batch
-        
     
     def delete_rows(self, where_clause : str) -> None:
         query = sql.delete_rows(self.tablename, where_clause)
@@ -351,45 +402,33 @@ class SqlTableMixin:
         return self.select(return_columns, where_clause)
     
 
-    def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
+    def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
         """
-        Updates columns based on `where_clause` 
-    
+        Yields all rows in batches, each batch in its own transaction.
+        
         Args:
-            where_clause (str): describes search filter with SQL condition query
-            set_values (dict[str, SqlValue]): dict where keys are column names and
-                values are corresponding new values to set
+            query (str): SQL query
+            batch_size (int): Size of each batch
 
-        Example:
-            >>> # This will set "unemployed" as Occupation and 0.0 as Salary
-            >>> # for all the salespeople and CEO
+        Examples:
+
             >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
-            >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})
+            >>> where = sql.where("Age" ">" 30)
+            >>> query = sql.select(table.tablename, where)
+            >>> with table.transaction():
+            >>>     for batch in table.fetchall_iterator(query, 1000):
+            >>>         process_batch(batch)
         """
-        
-        query = sql.update(self.tablename, where_clause, set_values)
-        self.execute(query)
 
+        if not self.in_transaction():
+            raise RuntimeError("To use the `fetchall_iterator()` method you have \
+                    to keep open the transaction with `transaction()` manager")
 
-    def upsert(self, *args, **kwargs) -> None:
-        """ 
-        Upsert (update or insert) single row, resolving conflicts
-        via the declared `primary` key
-        
-        Args:
-            *args (Any): Arguments in order of declared __columns__
-            **kwargs (Any): Unused
+        iter_cursor = self._trans.cursor()
+        iter_cursor.execute(query)
 
-        Example:
-            >>> table = MyTable("mydb.db")
-            >>> table.columns 
-            >>> # ["ID", "Name", "Age"]
-            >>> table.upsert(0, "Daniel", 27)
-            >>> table.upsert(0, "Daniel", 21)
-        """
-        query = sql.upsert(self.tablename, self.columns, self.primary)
-        self.execute(query, args, **kwargs)
+        while batch := iter_cursor.fetchmany(batch_size):
+            yield batch
     
 
     def __repr__(self) -> str:
@@ -412,19 +451,15 @@ class SqlTableMixin:
     def __iter__(self) -> Generator[SqlRow, None, None]:
         """ Database rows iterator """
         if not self.in_transaction():
-            raise RuntimeError(
-                (
-                    "To use the __iter__ method you have "
-                    "to keep open the transaction with `transaction()` manager"
-                )
-            )
+            raise RuntimeError("To use the __iter__ method you have \
+                    to keep open the transaction with `transaction()` manager")
         
         iter_cursor = self._trans.cursor()
         iter_cursor.execute(sql.select(self.tablename))
 
         while row := iter_cursor.fetchone(): 
             yield row
-    
+
 
     @property
     def columns(self) -> list[str]:
@@ -448,3 +483,18 @@ class SqlTableMixin:
     def tablename(self) -> str:
         """ Name of the table """
         return self.__tablename__
+    
+
+    @property
+    def tx_conn(self) -> sqlite3.Connection:
+        """ Gives acces to connection while in transaction """
+        if not self.in_transaction():
+            raise RuntimeError("`tx_conn` is not available outside the transaction mode")
+        return self._trans
+    
+    @property
+    def tx_cursor(self) -> sqlite3.Cursor:
+        """ Gives acces to connection cursor while in transaction """
+        if not self.in_transaction():
+            raise RuntimeError("`tx_cursor` is not available outside the transaction mode")
+        return self._trans_cursor

@@ -110,12 +110,7 @@ def select(tablename : str, columns : str | list[str] = "*", where_clause : str 
 
 def count(tablename : str, columns : str | list[str] = "*", where_clause : str | None = None) -> str:
     _columns = columns if isinstance(columns, str) else format_list(columns, False)
-    
-    query  = f"SELECT COUNT({_columns}) FROM {tablename}"
-    query += f" WHERE {where_clause}" if where_clause else ""
-    query += ";"
-
-    return query
+    return select(tablename, f"COUNT({_columns})", where_clause)
 
 
 def update(tablename : str, where_clause : str, set_values : dict[str, SqlValue]) -> str:
@@ -153,12 +148,15 @@ def upsert(tablename : str, columns : list[str], primary_key : list[str]) -> str
     placeholder  = values_placeholder(len(columns))
     non_primary  = set(columns) - set(primary_key)
     updated_list = [f"{col}=excluded.{col}" for col in non_primary]
-    updated      = format_list(updated_list, False)
     
+    columns_str = format_list(columns)
+    updated_str = format_list(updated_list, False)
+    primary_str = format_list(primary_key)
+
     query = (
-        f"INSERT INTO {tablename} {format_list(columns)} VALUES {placeholder} "
-        f"ON CONFLICT {format_list(primary_key)} "
-        f"DO UPDATE SET {updated};"
+        f"INSERT INTO {tablename} {columns_str} VALUES {placeholder} "
+        f"ON CONFLICT {primary_str} "
+        f"DO UPDATE SET {updated_str};"
     )
     return query
 

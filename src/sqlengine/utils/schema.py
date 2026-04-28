@@ -5,6 +5,7 @@ from typing import TypedDict
 
 from ..sqltable import SqlTableMixin, logger
 
+
 class Schema(TypedDict):
     tablename : str
     columns   : list[str]
@@ -59,6 +60,7 @@ def get_table_schema(database : str, tablename : str | None = None) -> Schema | 
 
 def table_from_database(database : str, tablename : str | None = None, **kwargs) -> SqlTableMixin:
     """ Dynamically builds class from table schema in provided database """
+    
     schema = get_table_schema(database, tablename)
     
     if not schema:

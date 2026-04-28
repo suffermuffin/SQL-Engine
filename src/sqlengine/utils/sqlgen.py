@@ -76,7 +76,6 @@ def where(
         operator : Literal["=", "!=", "<", ">", "<=", ">=", "IN"],
         values   : SqlValue | Sequence[SqlValue], 
     ) -> str:
-
     
     fmt = lambda x: x if not isinstance(x, str) else f"\"{x}\""
     
@@ -99,6 +98,7 @@ def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
 
 def select(tablename : str, columns : str | list[str] = "*", where_clause : str | None = None) -> str:
     """ Creates select query """
+    
     _columns = columns if isinstance(columns, str) else format_list(columns, False)
     
     query  = f"SELECT {_columns} FROM {tablename}"
@@ -124,7 +124,6 @@ def update(tablename : str, where_clause : str, set_values : dict[str, SqlValue]
             values are corresponding new values to set
         
     """
-    
     new_sets = [
         where(column, "=", new_value)
         for column, new_value in set_values.items()
@@ -144,7 +143,6 @@ def upsert(tablename : str, columns : list[str], primary_key : list[str]) -> str
         columns (list[str]): list of table columns
         primary_key (list[str]): list of primary keys
     """
-
     placeholder  = values_placeholder(len(columns))
     non_primary  = set(columns) - set(primary_key)
     updated_list = [f"{col}=excluded.{col}" for col in non_primary]

@@ -39,9 +39,7 @@ class SqlTableMixin:
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
         self.database = database
-
         self.connection_params = connection_params
-        
 
         self._validate_attributes()
         self._validate_write_db(force_drop)
@@ -112,7 +110,6 @@ class SqlTableMixin:
             >>>         table.update(where, {"Age" : age + 1})
             >>>     print(table.select())
         """
-
         if self.in_transaction():
             raise RuntimeError("Nested transactions are not permitted")
 
@@ -174,7 +171,6 @@ class SqlTableMixin:
             *args (Any): Arguments to the execution
             method (str): "execute" or "executemany"
         """
-
         logger.debug(f"{self.tablename}: {query} {args[0] if args else ''}")
 
         if self.in_transaction():
@@ -224,9 +220,11 @@ class SqlTableMixin:
 
     def drop_table(self, confirm : bool = False) -> None:
         """ Drops table if it exists. """
+        
         if not confirm:
             logger.warning("Pass `confirm=True` to drop the table")
             return
+        
         self.execute(sql.drop_table(self.tablename))
 
 
@@ -324,7 +322,6 @@ class SqlTableMixin:
             >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
             >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})
         """
-        
         query = sql.update(self.tablename, where_clause, set_values)
         self.execute(query)
 
@@ -419,7 +416,6 @@ class SqlTableMixin:
             >>>     for batch in table.fetchall_iterator(query, 1000):
             >>>         process_batch(batch)
         """
-
         if not self.in_transaction():
             raise RuntimeError("To use the `fetchall_iterator()` method you have \
                     to keep open the transaction with `transaction()` manager")
@@ -450,9 +446,10 @@ class SqlTableMixin:
 
     def __iter__(self) -> Generator[SqlRow, None, None]:
         """ Database rows iterator """
+        
         if not self.in_transaction():
             raise RuntimeError("To use the __iter__ method you have \
-                    to keep open the transaction with `transaction()` manager")
+                to keep open the transaction with `transaction()` manager")
         
         iter_cursor = self._trans.cursor()
         iter_cursor.execute(sql.select(self.tablename))
@@ -491,6 +488,7 @@ class SqlTableMixin:
         if not self.in_transaction():
             raise RuntimeError("`tx_conn` is not available outside the transaction mode")
         return self._trans
+    
     
     @property
     def tx_cursor(self) -> sqlite3.Cursor:

@@ -1,9 +1,8 @@
-import sqlite3
 import os
-import warnings
-from typing import TypedDict
+import sqlite3
+from typing import TypedDict, overload
 
-from ..sqltable import SqlTableMixin, logger
+from ..sqltable import SqlTableMixin
 
 
 class Schema(TypedDict):
@@ -13,59 +12,73 @@ class Schema(TypedDict):
     primary   : list[str]
 
 
-def get_table_schema(database : str, tablename : str | None = None) -> Schema | None:
+def get_database_tablenames(database : str, cursor : sqlite3.Cursor | None = None) -> list[str]:
 
-    warnings.warn("Experimental function `get_table_schema`, might be unreliable")
+    query = (
+        "SELECT name FROM sqlite_schema WHERE "
+        "type = 'table' AND name NOT LIKE 'sqlite_%';"
+    )
 
-    if not os.path.exists(database):
-        raise FileNotFoundError(f"File not exists: {database}")
+    if cursor:
+        cursor.execute(query)
+        names_raw = cursor.fetchall()
+
+    else:
+        with sqlite3.connect(database) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query)
+            names_raw = cursor.fetchall()
     
-    def resolve_name(schema : tuple[str]) -> str:
-        cr_query = schema[0]
-        tokens   = cr_query.split(" ")
-        _cr      = tokens[0]
-        _tb      = tokens[1]
-        name     = tokens[2].replace("\"", "")
-        assert _cr.upper() == "CREATE" and _tb.upper() == "TABLE", f"Can't resolve tablename: Unknown schema format `{cr_query}`"
-        return name
-    
-    with sqlite3.connect(database) as conn:
-        cur = conn.cursor()
-
-        if tablename is None:
-            cur.execute("SELECT sql FROM sqlite_schema;")
-            schemas = cur.fetchall()
-            names = [resolve_name(schema) for schema in schemas if schema[0] is not None]
-            
-            if len(names) > 1:
-                raise sqlite3.DatabaseError(f"More then one table found in {database} \
-                        and tablename not provided. Specify wich one: {names}")
-
-            tablename = names[0]
-
-        cur.execute(f"PRAGMA table_info({tablename});")
+    return [name[0] for name in names_raw if name[0] is not None]
         
-        column_types = cur.fetchall()
-        logger.debug(f"Got column_types: {column_types}")
 
-        if not column_types:
-            return None
+def get_table_schema(database : str, tablename : str, cursor : sqlite3.Cursor | None = None) -> Schema | None:
+    
+    query = f"PRAGMA table_info({tablename});"
 
-        columns = [it[1] for it in column_types]
-        types   = [it[2] for it in column_types]
-        primary = [it[1] for it in column_types if it[-1] > 0]
+    if cursor:
+        cursor.execute(query)
+        column_types = cursor.fetchall()
+    
+    else:
+        with sqlite3.connect(database) as conn:
+            cur = conn.cursor()
+            cur.execute(query)
+            column_types = cur.fetchall()
+    
+    if not column_types:
+        return None
+
+    columns = [it[1] for it in column_types]
+    types   = [it[2] for it in column_types]
+    primary = [it[1] for it in column_types if it[-1] > 0]
 
     return Schema(tablename=tablename, columns=columns, types=types, primary=primary)
 
 
-def table_from_database(database : str, tablename : str | None = None, **kwargs) -> SqlTableMixin:
-    """ Dynamically builds class from table schema in provided database """
-    
-    schema = get_table_schema(database, tablename)
-    
-    if not schema:
-        raise ValueError(f"{database} (tablename={tablename}) returned empty schema")
+def get_database_schemas(database : str) -> list[Schema]:
 
+    if not os.path.exists(database):
+        raise FileNotFoundError(f"File not exists: {database}")
+    
+    with sqlite3.connect(database) as conn:
+        cursor = conn.cursor()
+        names  = get_database_tablenames(database, cursor)
+        
+        schemas : list[Schema] = []
+        
+        for tablename in names:
+            schema = get_table_schema(database, tablename, cursor)
+            
+            if schema:
+                schemas.append(schema)
+
+    return schemas
+
+
+def table_from_schema(database : str, schema : Schema, **kwargs) -> SqlTableMixin:
+    """ Dynamically builds class from provided schema """
+    
     new_class = type(
         schema["tablename"],
         (SqlTableMixin,),
@@ -77,3 +90,28 @@ def table_from_database(database : str, tablename : str | None = None, **kwargs)
         }
     )
     return new_class(database, **kwargs)
+
+
+@overload
+def table_from_database(database : str, tablename : str, **kwargs) -> SqlTableMixin: ...
+@overload
+def table_from_database(database : str, tablename : None = None, **kwargs) -> list[SqlTableMixin]: ...
+
+def table_from_database(database : str, tablename : str | None = None, **kwargs) -> list[SqlTableMixin] | SqlTableMixin:
+    """ Dynamically builds class from table schema in provided database """
+    
+    schemas = get_database_schemas(database)
+    
+    if len(schemas) < 1:
+        raise sqlite3.DatabaseError(f"No schemas in {database}")
+    
+    if not tablename:
+        return [table_from_schema(database, schema, **kwargs) for schema in schemas]
+    
+    schema_map = {schema["tablename"] : schema for schema in schemas}
+    target_schema = schema_map.get(tablename, None)
+    
+    if not target_schema:
+        raise sqlite3.DatabaseError(f"No tablename `{tablename}` in {database}. Available tables: {list(schema_map.keys())}")
+    
+    return table_from_schema(database, target_schema, **kwargs)

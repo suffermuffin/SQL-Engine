@@ -10,7 +10,7 @@ Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_
 
 ## Purpose
 
-It's a tiny little modern projects that lets you prototype your databases locally with great flexability. Also, it can be used in small production apps like chat bots to store data, but **beware! Security might be flowed, proof query execution beforehand.** In other cases, sure, use it as you like.
+It's a tiny little modern project that lets you prototype your databases locally with great flexability. Also, it can be used in small production apps like chat bots to store data, but **beware! Security might be flowed, proof query execution beforehand.** In other cases, sure, use it as you like.
 
 
 ## Installation
@@ -63,7 +63,6 @@ class Employees(SqlTableMixin):
     __columns__   : list[str] = ["ID", "Name", "Occupation"]
     __types__     : list[str] = ["INT", "TEXT NOT NULL", "TEXT"]
     __primary__   : list[str] = ["ID"]
-    __tablename__ : str = "EmployeesDB"
 
     # You may overwrite your insert methods for type consistancy
     def insert(self, id : int, name : str, occupation : str) -> None:
@@ -78,25 +77,25 @@ class Employees(SqlTableMixin):
 
 ```py
 # Force table overwrite with `force_drop=True`
-employees_table = Employees("MyBusiness.db", force_drop=True)
+table = Employees("MyBusiness.db", force_drop=True)
 ```
 
 ```sql
 -- Debug output --
-Employees: DROP TABLE IF EXISTS EmployeesDB 
-Employees: CREATE TABLE IF NOT EXISTS EmployeesDB (ID INT, Name TEXT NOT NULL, Occupation TEXT, PRIMARY KEY (ID));
+Employees: DROP TABLE IF EXISTS Employees 
+Employees: CREATE TABLE IF NOT EXISTS Employees (ID INT, Name TEXT NOT NULL, Occupation TEXT, PRIMARY KEY (ID));
 ```
 
 ---
 **Insert single row**
 
 ```py
-employees_table.insert(0, 'John', 'CEO')
+table.insert(0, 'John', 'CEO')
 ```
 
 ```sql
 -- Debug output --
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); (0, 'John', 'CEO')
+Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); (0, 'John', 'CEO')
 ```
 
 ---
@@ -104,12 +103,12 @@ Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); (0, 
 
 ```py
 workers  = [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
-employees_table.insert_many(workers)
+table.insert_many(workers)
 ```
 
 ```sql
 -- Debug output --
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
+Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
 ```
 
 ---
@@ -123,17 +122,17 @@ sales = [
     (6, 'Max', 'seller'), (7, 'Maria', 'seller')
 ]
 
-with employees_table.transaction():
+with table.transaction():
     for i in range(0, len(sales), batch_size):
         batch = sales[i: i + batch_size]
-        employees_table.insert_many(batch)
+        table.insert_many(batch)
 ```
 
 ```sql
 -- Debug output --
 Employees: Transaction started
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
-Employees: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(6, 'Max', 'seller'), (7, 'Maria', 'seller')]
+Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); [(4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
+Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); [(6, 'Max', 'seller'), (7, 'Maria', 'seller')]
 Employees: Transaction finished
 ```
 
@@ -141,7 +140,7 @@ Employees: Transaction finished
 **Query select with specified columns**
 
 ```py
-employees_table.select_eq('Occupation', 'CEO', return_columns=['Name', 'ID'])
+table.select_eq('Occupation', 'CEO', return_columns=['Name', 'ID'])
 
 # Returns
 [('John', 0)]
@@ -149,14 +148,14 @@ employees_table.select_eq('Occupation', 'CEO', return_columns=['Name', 'ID'])
 
 ```sql
 -- Debug output --
-Employees: SELECT Name, ID FROM EmployeesDB WHERE Occupation = "CEO";
+Employees: SELECT Name, ID FROM Employees WHERE Occupation = "CEO";
 ```
 
 ---
 **Query select with multiple specified values**
 
 ```py
-employees_table.select_eq('Occupation', equals=['worker', 'CEO'])
+table.select_eq('Occupation', equals=['worker', 'CEO'])
 
 # Returns
 [(0, 'John', 'CEO'),
@@ -167,26 +166,26 @@ employees_table.select_eq('Occupation', equals=['worker', 'CEO'])
 
 ```sql
 -- Debug output --
-Employees: SELECT * FROM EmployeesDB WHERE Occupation in ("worker", "CEO");
+Employees: SELECT * FROM Employees WHERE Occupation in ("worker", "CEO");
 ```
 
 ---
 **Delete Rows**
 
 ```py
-employees_table.delete_eq('ID', 1)
+table.delete_eq('ID', 1)
 ```
 
 ```sql
 -- Debug output --
-Employees: DELETE FROM EmployeesDB WHERE ID = 1; 
+Employees: DELETE FROM Employees WHERE ID = 1; 
 ```
 
 ---
 **Select all**
 
 ```py
-employees_table.select()
+table.select()
 
 # Returns
 [(0, 'John', 'CEO'),
@@ -200,7 +199,7 @@ employees_table.select()
 
 ```sql
 -- Debug output --
-Employees: SELECT * FROM EmployeesDB;
+Employees: SELECT * FROM Employees;
 ```
 
 **Create transaction rows batch generator**
@@ -211,10 +210,10 @@ from sqlengine import sqlgen as sql
 
 logger = logging.getLogger(__name__)
 
-with employees_table.transaction():
+with table.transaction():
     
-    query = sql.select(employees_table.tablename, columns=['Name', 'ID'])
-    batches = employees_table.fetchall_iterator(query, batch_size=2)
+    query = sql.select(table.tablename, columns=['Name', 'ID'])
+    batches = table.fetchall_iterator(query, batch_size=2)
     
     for i, batch in enumerate(batches):
         logger.debug(f"batch {i}: {batch}")

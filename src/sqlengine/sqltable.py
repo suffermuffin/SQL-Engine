@@ -484,7 +484,7 @@ class SqlTableMixin:
 
     @property
     def tx_conn(self) -> sqlite3.Connection:
-        """ Gives acces to connection while in transaction """
+        """ Gives access to connection while in transaction """
         if not self.in_transaction():
             raise RuntimeError("`tx_conn` is not available outside the transaction mode")
         return self._trans
@@ -492,7 +492,7 @@ class SqlTableMixin:
     
     @property
     def tx_cursor(self) -> sqlite3.Cursor:
-        """ Gives acces to connection cursor while in transaction """
+        """ Gives access to connection cursor while in transaction """
         if not self.in_transaction():
             raise RuntimeError("`tx_cursor` is not available outside the transaction mode")
         return self._trans_cursor

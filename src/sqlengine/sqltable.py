@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+import warnings
 from contextlib import contextmanager
 from typing import Sequence, Literal, Generator, overload
 
@@ -65,7 +66,7 @@ class SqlTableMixin:
     
     def _validate_attributes(self):
 
-        if not hasattr(self, "__tablename__"):
+        if not hasattr(self, "__tablename__") or self.__tablename__ is None:
             self.__tablename__ = self.__class__.__name__
 
         missing_attrs = [
@@ -222,7 +223,7 @@ class SqlTableMixin:
         """ Drops table if it exists. """
         
         if not confirm:
-            logger.warning("Pass `confirm=True` to drop the table")
+            warnings.warn("In `drop_table`: pass `confirm=True` to drop the table")
             return
         
         self.execute(sql.drop_table(self.tablename))
@@ -433,6 +434,7 @@ class SqlTableMixin:
             f"database={self.database}, "
             f"tablename={self.tablename}, "
             f"columns={sql.format_list(self.columns)}, "
+            f"types={sql.format_list(self.types)}, "
             f"primary_key={sql.format_list(self.primary)})"
         )
     

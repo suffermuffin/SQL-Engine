@@ -435,7 +435,7 @@ class SqlTableMixin:
             f"tablename={self.tablename}, "
             f"columns={sql.format_list(self.columns)}, "
             f"types={sql.format_list(self.types)}, "
-            f"primary_key={sql.format_list(self.primary)})"
+            f"primary={sql.format_list(self.primary)})"
         )
     
 
@@ -498,3 +498,17 @@ class SqlTableMixin:
         if not self.in_transaction():
             raise RuntimeError("`tx_cursor` is not available outside the transaction mode")
         return self._trans_cursor
+    
+    
+    @property
+    def schema(self):
+        """ Table schema """
+        from .utils.schema import Schema
+
+        return Schema({
+            "tablename": self.tablename,
+            "columns"  : self.columns,
+            "types"    : self.types,
+            "primary"  : self.primary
+        })
+ 

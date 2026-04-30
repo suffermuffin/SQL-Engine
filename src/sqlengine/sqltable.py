@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
-from .utils.types import SqlRow, SqlValue
+from .utils.types import SqlRow, SqlValue, CustomType, register_type
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -34,7 +34,7 @@ class SqlTableMixin:
 
     __tablename__ : str
     __columns__   : list[str]
-    __types__     : list[str]
+    __types__     : list[str | type[CustomType]]
     __primary__   : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
@@ -43,25 +43,8 @@ class SqlTableMixin:
         self.connection_params = connection_params
 
         self._validate_attributes()
+        self._register_types()
         self._validate_write_db(force_drop)
-
-
-    def _validate_write_db(self, force_drop : bool):
-
-        if self.database == ":memory:":
-            logger.debug(f"{self.tablename}: Using in-memory database")
-            return
-        
-        if not os.path.exists(self.database):
-            logger.info(f'{self.tablename}: {self.database} does not exist. Creating...')
-            parent_dir = self.database.removesuffix(os.path.basename(self.database))
-            if parent_dir: 
-                os.makedirs(parent_dir, exist_ok=True)
-
-        elif force_drop is True:
-            self.drop_table(confirm=True)
-
-        self.create_table()
 
     
     def _validate_attributes(self):
@@ -90,6 +73,31 @@ class SqlTableMixin:
 
         if wrong_primaries:
             raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
+        
+
+    def _register_types(self):
+        custom_types = [t for t in self.__types__ if not isinstance(t, str)]
+        for _type in custom_types:
+            register_type(_type)
+            logger.debug(f'Registered type {_type} in sqlite3')
+        
+
+    def _validate_write_db(self, force_drop : bool):
+
+        if self.database == ":memory:":
+            logger.debug(f"{self.tablename}: Using in-memory database")
+            return
+        
+        if not os.path.exists(self.database):
+            logger.info(f'{self.tablename}: {self.database} does not exist. Creating...')
+            parent_dir = self.database.removesuffix(os.path.basename(self.database))
+            if parent_dir: 
+                os.makedirs(parent_dir, exist_ok=True)
+
+        elif force_drop is True:
+            self.drop_table(confirm=True)
+
+        self.create_table()
 
 
     def connect(self) -> sqlite3.Connection:
@@ -494,7 +502,7 @@ class SqlTableMixin:
     @property
     def types(self) -> list[str]:
         """ List of table column dtypes """
-        return self.__types__
+        return list(map(lambda x: x if isinstance(x, str) else x.__name__, self.__types__))
 
     
     @property
@@ -528,12 +536,12 @@ class SqlTableMixin:
     @property
     def schema(self):
         """ Table schema """
-        from .utils.schema import Schema
+        from .schema import Schema
 
         return Schema({
-            "tablename": self.tablename,
-            "columns"  : self.columns,
-            "types"    : self.types,
-            "primary"  : self.primary
+            "tablename": self.__tablename__,
+            "columns"  : self.__columns__,
+            "types"    : self.__types__,
+            "primary"  : self.__primary__
         })
  

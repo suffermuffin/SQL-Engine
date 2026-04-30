@@ -2,13 +2,14 @@ import os
 import sqlite3
 from typing import TypedDict, overload
 
-from ..sqltable import SqlTableMixin
+from .sqltable import SqlTableMixin
+from .utils.types import CustomType
 
 
 class Schema(TypedDict):
     tablename : str
     columns   : list[str]
-    types     : list[str]
+    types     : list[str | type[CustomType]]
     primary   : list[str]
 
 

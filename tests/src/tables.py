@@ -1,7 +1,7 @@
 import sqlite3
 from typing import Literal
 
-from sqlengine import SqlTableMixin, Schema
+from sqlengine import SqlTableMixin, Schema, types
 
 
 class Point:
@@ -23,28 +23,47 @@ class Point:
 
 class Employees(SqlTableMixin):
 
-    __tablename__ : str       = "MyDB"
-    __columns__   : list[str] = ["ID", "name", "surname", "salary", "position"]
-    __types__     : list[str] = ["INT", "TEXT", "TEXT", "FLOAT", "TEXT"]
-    __primary__   : list[str] = ["ID", "name"]
+    __tablename__ = "MyDB"
+    __columns__   = ["ID", "name", "surname", "salary", "position"]
+    __types__     = ["INT", "TEXT", "TEXT", "FLOAT", "TEXT"]
+    __primary__   = ["ID", "name"]
 
 
 class Coordinates(SqlTableMixin):
 
-    __columns__   : list[str] = ["ID", "name", "coords", "temp"]
-    __types__     : list[str] = ["INT", "TEXT", "POINT", "FLOAT"]
-    __primary__   : list[str] = ["ID"]
+    __columns__ = ["ID", "name", "coords", "temp"]
+    __types__   = ["INT", "TEXT", Point, "FLOAT"]
+    __primary__ = ["ID"]
 
-
-    def __init__(self, database: str | Literal[':memory:'], force_drop: bool = False, **connection_params) -> None:
-        sqlite3.register_adapter(Point, lambda x: x.to_sql())
-        sqlite3.register_converter("POINT", Point.from_sql)
-        super().__init__(database, force_drop, detect_types=sqlite3.PARSE_DECLTYPES, **connection_params)
 
 
 coord_schema : Schema = {
     "tablename": "Coordinates",
     "columns"  : ["ID", "name", "coords", "temp"],
-    "types"    : ["INT", "TEXT", "POINT", "FLOAT"],
+    "types"    : ["INT", "TEXT", Point, "FLOAT"],
     "primary"  : ["ID"],
 }
+
+
+employees_data = [
+    (0, "test0", "surname0", 100.0, "pos0"),
+    (0, "test1", "surname0", 100.0, "pos0"),
+    (1, "test0", "surname1", 111.1, "pos1"),
+    (1, "test1", "surname1", 111.1, "pos1"),
+    (2, "test2", "surname2", 122.2, "pos2"),
+    (3, "test3", "surname3", 133.3, "pos3"),
+    (4, "test4", "surname4", 144.4, "pos4"),
+]
+
+
+coords_data = [
+    (0,  "loc0",  Point(0,0),   0.0),
+    (1,  "loc1",  Point(1,1),   1.1),
+    (2,  "loc0",  Point(2,2),   2.2),
+    (3,  "loc3",  Point(3,3),   3.3),
+    (4,  "loc4",  Point(4,4),   4.4),
+    (5,  "loc5",  Point(5,5),   5.5),
+    (6,  "loc6",  Point(6,6),   6.6),
+    (7,  "loc7",  Point(7,7),   7.7),
+    (10, "loc10", Point(10,10), 10.10),
+]

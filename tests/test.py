@@ -5,7 +5,8 @@ import logging
 import sys
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
-from src.tables import Employees, Coordinates, coord_schema
+from src.tables import (Employees, Coordinates, coord_schema,
+                        coords_data, employees_data)
 from sqlengine  import schema
 
 TEST_DIR   = "temp/"
@@ -30,6 +31,11 @@ class TestSqlTable(unittest.TestCase):
         if not os.path.exists(CHINOOK_DB):
             logger.info(f"Downloading {CHINOOK_DB}")
             download_file(CHINOOK_URL, CHINOOK_DB)
+        
+        self.coord_table    = Coordinates(TEST_DB, True)
+        self.empl_table     = Employees(TEST_DB, True)
+        self.coord_table_s  = schema.table_from_schema(":memory:", coord_schema)
+        self.chinook_tables = schema.table_from_database(CHINOOK_DB)
 
         logger.info('Setup complete')
 
@@ -57,11 +63,12 @@ class TestSqlTable(unittest.TestCase):
         logger.info('Teardown complete')
 
     
-    def test_setup(self):
-        coord_table    = Coordinates(TEST_DB, True)
-        empl_table     = Employees(TEST_DB, True)
-        coord_table_s  = schema.table_from_schema(TEST_DB, coord_schema)
-        chinook_tables = schema.table_from_database(CHINOOK_DB)
+    def test_getitem(self):
+        self.coord_table.create_table()
+        self.empl_table.create_table()
+        self.coord_table.insert_many(coords_data)
+
+        ...
 
 
 if __name__ == '__main__':

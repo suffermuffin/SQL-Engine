@@ -459,6 +459,31 @@ class SqlTableMixin:
         while row := iter_cursor.fetchone(): 
             yield row
 
+    
+    @overload
+    def __getitem__(self, key : slice) -> list[SqlRow]: ...
+    @overload
+    def __getitem__(self, key : SqlValue | list[SqlValue]) -> SqlRow: ...
+    
+    def __getitem__(self, key : SqlValue | list[SqlValue] | slice) -> SqlRow | list[SqlRow]:
+        """ Get row by primary key """
+
+        if len(self.primary) > 1:
+            if not (isinstance(key, list) and len(key) == len(self.primary)):
+                raise IndexError("Key expected to be list of equal lenght to `primary`")
+            where = " AND ".join([sql.where_equals(col, val) for col, val in zip(self.primary, key)])
+            return self.select(where_clause=where)
+        
+        if isinstance(key, list):
+            raise IndexError("Key expected to be a single value of primary column")
+        
+        if isinstance(key, slice):
+            ids = [i for i in range(*key.indices(self.__len__()))]
+            print(ids)
+            return self.select_eq(self.primary[0], ids)
+        
+        return self.select_eq(self.primary[0], key)[0]
+
 
     @property
     def columns(self) -> list[str]:

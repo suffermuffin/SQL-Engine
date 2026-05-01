@@ -3,13 +3,13 @@ import sqlite3
 from typing import TypedDict, overload
 
 from .sqltable import SqlTableMixin
-from .utils.types import CustomType
+from .utils.types import SqlType
 
 
 class Schema(TypedDict):
     tablename : str
     columns   : list[str]
-    types     : list[str | type[CustomType]]
+    types     : list[SqlType | str]
     primary   : list[str]
 
 

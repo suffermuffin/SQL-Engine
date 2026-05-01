@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
-from .utils.types import SqlRow, SqlValue, CustomType, register_type
+from .utils.types import SqlRow, SqlValue, SqlType, register_type, is_custom_type, types_map
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -34,7 +34,7 @@ class SqlTableMixin:
 
     __tablename__ : str
     __columns__   : list[str]
-    __types__     : list[str | type[CustomType]]
+    __types__     : list[SqlType | str]
     __primary__   : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
@@ -76,10 +76,28 @@ class SqlTableMixin:
         
 
     def _register_types(self):
-        custom_types = [t for t in self.__types__ if not isinstance(t, str)]
-        for _type in custom_types:
-            register_type(_type)
-            logger.debug(f'Registered type {_type} in sqlite3')
+        
+        resolved = []
+        for type_ in self.__types__:
+            
+            if isinstance(type_, str):
+                resolved.append(type_)
+                continue
+            
+            if is_custom_type(type_):
+                register_type(type_, type_.__name__)
+                resolved.append(type_.__name__)
+                logger.debug(f'Registered type `{type_.__name__}` in sqlite3')
+                continue
+
+            sql_type = types_map.get(type_.__name__, None)
+            
+            if not sql_type:
+                raise ValueError(f"Can't resolve type {type_} for sql mapping")
+            
+            resolved.append(sql_type)
+
+        self.__types__ = resolved
         
 
     def _validate_write_db(self, force_drop : bool):
@@ -358,7 +376,7 @@ class SqlTableMixin:
         return self.delete_rows(where_clause)
     
     
-    def select(self, columns : str | list[str] = "*", where_clause : str | None = None) -> list[SqlRow]:
+    def select(self, columns : str | list[str] = "*", where_clause : str | None = None, order_by : str | None = None) -> list[SqlRow]:
         """
         Fetch all rows of `columns` from the table with optional `where_clause` filter.\n
         This executes query in form of "SELECT `columns` FROM table WHERE `where_clause`"
@@ -367,6 +385,7 @@ class SqlTableMixin:
             columns (str | list[str]): columns of which rows to return. If "*" is provided -
                 returns all.
             where_clause (str): describes search filter with SQL condition query
+            order_by (str | None): ORDER BY column key
         
         Returns:
             out (list[SqlRow]): list of all rows, where values are in order of provided
@@ -379,11 +398,17 @@ class SqlTableMixin:
             >>> table.select(["ID", "Name"], where)
             >>> table.select("*", "ID = 0")
         """
-        query = sql.select(self.tablename, columns, where_clause)
+        query = sql.select(self.tablename, columns, where_clause, order_by)
         return self.fetchall(query)
     
 
-    def select_eq(self, column : str, equals : SqlValue | Sequence[SqlValue], return_columns : str | list[str] = "*") -> list[SqlRow]:
+    def select_eq(
+            self, 
+            column         : str,
+            equals         : SqlValue | Sequence[SqlValue],
+            return_columns : str | list[str] = "*",
+            order_by       : str | None      = None
+        ) -> list[SqlRow]: 
         """ 
         Returns rows or `return_columns` of rows where `column` value is equal to `equals`.
         Interface/shortcut for `select` method. This executes query in form of
@@ -394,6 +419,7 @@ class SqlTableMixin:
             equals (SqlValue | list[SqlValue]): values to search for in `column`.
             return_columns (str | list[str]): rows of which columns to return. If "*" is provided -
                 returns all.
+            order_by (str | None): ORDER BY column key
         
         Returns:
             out (list[SqlRow]): list of all rows, where values are in order of provided
@@ -405,7 +431,16 @@ class SqlTableMixin:
             >>> table.select_eq("ID", 0, "*")
         """
         where_clause = sql.where_equals(column, equals)
-        return self.select(return_columns, where_clause)
+        return self.select(return_columns, where_clause, order_by)
+    
+
+    def max_value(self, column : str, where_clause : str | None = None) -> SqlValue:
+        query = sql.max_value(self.tablename, column, where_clause)
+        return self.fetchone(query)[0]
+    
+    def min_value(self, column : str, where_clause : str | None = None) -> SqlValue:
+        query = sql.min_value(self.tablename, column, where_clause)
+        return self.fetchone(query)[0]
     
 
     def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
@@ -484,11 +519,31 @@ class SqlTableMixin:
         
         if isinstance(key, list):
             raise IndexError("Key expected to be a single value of primary column")
-        
+
         if isinstance(key, slice):
-            ids = [i for i in range(*key.indices(self.__len__()))]
-            print(ids)
-            return self.select_eq(self.primary[0], ids)
+            logger.debug(f"Got slice: {key}")
+            
+            start = key.start or self.min_value(self.primary[0])
+            stop  = key.stop  or self.max_value(self.primary[0])
+            step  = key.step  or 1
+            
+            logger.debug(f"Transformed: {start}, {stop}, {step}")
+            
+            assert isinstance(start, int)
+            assert isinstance(stop, int)
+            assert isinstance(step, int)
+
+            if abs(step) == 1:
+                where = f"{self.primary[0]} BETWEEN {min(start, stop)} AND {max(start, stop)}"
+                query = sql.select(self.tablename, where_clause=where, order_by=self.primary[0])
+                rows = self.fetchall(query)
+                return rows if step > 0 else list(reversed(rows))
+            
+
+            ids = [i for i in range(start, stop, step)]
+            rows = self.select_eq(self.primary[0], ids, order_by=self.primary[0])
+            
+            return rows if step >= 0 else list(reversed(rows))
         
         return self.select_eq(self.primary[0], key)[0]
 

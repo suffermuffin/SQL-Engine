@@ -96,13 +96,19 @@ def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
     return where(column, "IN", equals)
 
 
-def select(tablename : str, columns : str | list[str] = "*", where_clause : str | None = None) -> str:
+def select(
+      tablename   : str,
+      columns     : str | list[str] = "*",
+      where_clause: str | None      = None,
+      order_by    : str | None      = None
+    ) -> str: 
     """ Creates select query """
     
     _columns = columns if isinstance(columns, str) else format_list(columns, False)
     
     query  = f"SELECT {_columns} FROM {tablename}"
     query += f" WHERE {where_clause}" if where_clause else ""
+    query += f" ORDER BY {order_by}" if order_by else ""
     query += ";"
 
     return query
@@ -156,6 +162,20 @@ def upsert(tablename : str, columns : list[str], primary_key : list[str]) -> str
         f"ON CONFLICT {primary_str} "
         f"DO UPDATE SET {updated_str};"
     )
+    return query
+
+
+def max_value(tablename : str, column : str, where_clause : str | None = None) -> str:
+    query  = f"SELECT MAX({column}) FROM {tablename}"
+    query += f" WHERE {where_clause}" if where_clause else ""
+    query += ";"
+    return query
+
+
+def min_value(tablename : str, column : str, where_clause : str | None = None) -> str:
+    query  = f"SELECT MIN({column}) FROM {tablename}"
+    query += f" WHERE {where_clause}" if where_clause else ""
+    query += ";"
     return query
 
 

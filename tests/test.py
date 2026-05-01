@@ -63,18 +63,25 @@ class TestSqlTable(unittest.TestCase):
         logger.info('Teardown complete')
 
     
-    def test_getitem(self):
+    def test_getitem_single_primary(self):
         self.coord_table.create_table()
-        self.empl_table.create_table()
         self.coord_table.insert_many(coords_data)
 
-        ...
+        retrieved = self.coord_table[:5]
+        for row_or, row_re in zip(coords_data[:5], retrieved):
+            self.assertEqual(row_or[0], row_re[0])
+            self.assertEqual(row_or[1], row_re[1])
+        
+        
+    def test_getitem_double_primary(self):
+        self.empl_table.create_table()
+        self.empl_table.insert_many(employees_data)
 
 
 if __name__ == '__main__':
     
-    if "--teardown" in sys.argv:
+    if "--teardown-all" in sys.argv:
         _TEARDOWM = True
-        sys.argv.remove("--teardown")
+        sys.argv.remove("--teardown-all")
     
     unittest.main()

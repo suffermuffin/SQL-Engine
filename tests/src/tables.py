@@ -32,7 +32,7 @@ class Employees(SqlTableMixin):
 class Coordinates(SqlTableMixin):
 
     __columns__ = ["ID", "name", "coords", "temp"]
-    __types__   = ["INT", "TEXT", Point, "FLOAT"]
+    __types__   = ['INTEGER', 'TEXT', Point, 'REAL']
     __primary__ = ["ID"]
 
 
@@ -40,7 +40,7 @@ class Coordinates(SqlTableMixin):
 coord_schema : Schema = {
     "tablename": "Coordinates",
     "columns"  : ["ID", "name", "coords", "temp"],
-    "types"    : ["INT", "TEXT", Point, "FLOAT"],
+    "types"    : [int, str, Point, float],
     "primary"  : ["ID"],
 }
 

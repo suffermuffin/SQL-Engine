@@ -16,10 +16,10 @@ def download_file(url : str, save_path : str):
     subprocess.run(["wget", "-q", "--show-progress", "-P", dir_path, "-O", save_path, url])
 
 
-def format_logging():
+def format_logging(level : str = "INFO"):
     
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(level.upper())
     
     while root_logger.handlers:
         handler = root_logger.handlers.pop()

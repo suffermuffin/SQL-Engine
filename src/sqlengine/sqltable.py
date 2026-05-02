@@ -3,7 +3,7 @@ import os
 import sqlite3
 import warnings
 from contextlib import contextmanager
-from typing import Sequence, Literal, Generator, overload
+from typing import Any, Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
 from .utils.types import SqlRow, SqlValue, SqlType, register_type, is_custom_type, types_map
@@ -455,9 +455,15 @@ class SqlTableMixin:
         query = sql.max_value(self.tablename, column, where_clause)
         return self.fetchone(query)[0]
     
+    
     def min_value(self, column : str, where_clause : str | None = None) -> SqlValue:
         query = sql.min_value(self.tablename, column, where_clause)
         return self.fetchone(query)[0]
+    
+
+    def head(self, n : int = 5) -> list[SqlRow]:
+        query = sql.select(self.tablename)
+        return self.fetchmany(query, n)
     
 
     def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
@@ -521,18 +527,19 @@ class SqlTableMixin:
 
     
     @overload
-    def __getitem__(self, key : SqlValue | list[SqlValue]) -> SqlRow: ...
+    def __getitem__(self, key : SqlValue | list[Any]) -> SqlRow: ...
     @overload
     def __getitem__(self, key : slice) -> list[SqlRow]: ...
     
-    def __getitem__(self, key : SqlValue | list[SqlValue] | slice) -> SqlRow | list[SqlRow]:
+    def __getitem__(self, key : SqlValue | list[Any] | slice) -> SqlRow | list[SqlRow]:
         """ Get row by primary key """
 
         if len(self.primary) > 1:
             if not (isinstance(key, list) and len(key) == len(self.primary)):
                 raise IndexError("Key expected to be list of equal lenght to `primary`")
             where = " AND ".join([sql.where_equals(col, val) for col, val in zip(self.primary, key)])
-            return self.select(where_clause=where)
+            query = sql.select(self.tablename, where_clause=where)
+            return self.fetchone(query)
         
         if isinstance(key, list):
             raise IndexError("Key expected to be a single value of primary column")
@@ -592,6 +599,12 @@ class SqlTableMixin:
     def tablename(self) -> str:
         """ Name of the table """
         return self.__tablename__
+    
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """ Table shape (n_cols, n_rows) """
+        return (len(self.columns), len(self))
     
 
     @property

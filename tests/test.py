@@ -3,13 +3,14 @@ import unittest
 import os
 import logging
 import sys
+import warnings
+
+from sqlengine       import schema
+from sqlengine       import sqlgen as sql
+from sqlengine.utils import shared_connection
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
-from src.tables import (Employees, Coordinates, Point, 
-                        coord_schema, coords_data, employees_data)
-from sqlengine  import schema
-from sqlengine  import sqlgen as sql
-from sqlengine.utils import shared_connection
+from src.tables import Employees, Coordinates, Point, coord_schema, coords_data, employees_data
 
 
 TEST_DIR   = "temp/"
@@ -18,7 +19,7 @@ TEST_DB    = "temp/test.db"
 
 _TEARDOWM = False
 
-format_logging()
+format_logging("CRITICAL")
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ class TestSqlTable(unittest.TestCase):
     def tearDownClass(cls) -> None:
         
         def remove_test_dir():
-        
             if os.path.exists(CHINOOK_DB):
                 os.remove(CHINOOK_DB)
             
@@ -55,23 +55,30 @@ class TestSqlTable(unittest.TestCase):
                 try:
                     os.rmdir(TEST_DIR)
                 except OSError as e:
-                    logger.error("Can't remove %s: %s", TEST_DIR, e)
+                    warnings.warn(f"Can't remove {TEST_DIR}: {repr(e)}")
 
-        
         if os.path.exists(TEST_DB):
             os.remove(TEST_DB)
-
         
         if _TEARDOWM:
             remove_test_dir()
 
         logger.info('Teardown complete')
 
+
+    def setUp(self) -> None:
+        self.coord_table.create_table()
+        self.empl_table.create_table()
+
+    
+    def tearDown(self) -> None:
+        self.coord_table.drop_table(True)
+        self.empl_table.drop_table(True)
+    
     
     def test_getitem_single_primary(self):
         logger.info("Testing __getitem__ with single primary...")
         
-        self.coord_table.create_table()
         self.coord_table.insert_many(coords_data)
 
         logger.info(f"Coord table shape: {self.coord_table.shape}")
@@ -83,14 +90,12 @@ class TestSqlTable(unittest.TestCase):
             assert isinstance(row_re[2], Point)
             self.assertEqual(row_or[2].x, row_re[2].x)
             self.assertEqual(row_or[2].y, row_re[2].y)
-        
-        self.coord_table.drop_table(True)
+            self.assertEqual(row_or[3], row_re[3])
         
     
     def test_getitem_double_primary(self):
         logger.info("Testing __getitem__ with double primary...")
         
-        self.empl_table.create_table()
         self.empl_table.insert_many(employees_data)
 
         logger.info(f"Employess table shape: {self.empl_table.shape}")
@@ -144,8 +149,6 @@ class TestSqlTable(unittest.TestCase):
         logger.info("Testing shared connection...")
 
         with shared_connection(self.coord_table, self.empl_table, self.coord_table_s, **self.coord_table.connection_params):
-            self.coord_table.create_table()
-            self.empl_table.create_table()
             self.coord_table_s.create_table()
 
             self.coord_table.insert_many(coords_data)
@@ -156,10 +159,96 @@ class TestSqlTable(unittest.TestCase):
             
             self.assertEqual(self.coord_table.shape, self.coord_table_s.shape)
 
-            self.coord_table.drop_table(True)
-            self.coord_table_s.drop_table(True)
-            self.empl_table.drop_table(True)
+    
+    def test_connection_commit(self):
 
+        logger.info("Testing connection commits...")
+
+        params = self.coord_table.connection_params
+        step_1_shapes = (self.coord_table.shape, self.empl_table.shape)
+
+        with shared_connection(self.coord_table, self.empl_table, **params):
+            self.coord_table.insert_many(coords_data)
+            self.empl_table.insert_many(employees_data)
+            step_2_shapes = (self.coord_table.shape, self.empl_table.shape)
+        
+        self.assertEqual(step_2_shapes, (self.coord_table.shape, self.empl_table.shape))
+        self.assertNotEqual(step_1_shapes, step_2_shapes)
+
+        self.coord_table.drop_table(True)
+        self.coord_table.create_table()
+
+        step_1_coord_shape = self.coord_table.shape
+
+        with self.coord_table.transaction():
+            self.coord_table.insert_many(coords_data)
+            step_2_coord_shape = self.coord_table.shape
+
+        self.assertEqual(step_2_coord_shape, self.coord_table.shape)
+        self.assertNotEqual(step_1_coord_shape, step_2_coord_shape)
+
+        self.empl_table.drop_table(True)
+        self.empl_table.create_table()
+
+        step_1_empl_shape = self.empl_table.shape
+
+        with self.empl_table.transaction():
+            self.empl_table.insert_many(employees_data)
+            step_2_empl_shape = self.empl_table.shape
+
+        self.assertEqual(step_2_empl_shape, self.empl_table.shape)
+        self.assertNotEqual(step_1_empl_shape, step_2_empl_shape)
+
+
+    def test_connection_rolback(self):
+        
+        logger.info("Testing connection rollback...")
+
+        params = self.coord_table.connection_params
+
+        coords_data_1, coords_data_2 = coords_data[:len(coords_data)//2], coords_data[len(coords_data)//2:]
+        employees_data_1, employees_data_2 = employees_data[:len(employees_data)//2], employees_data[len(employees_data)//2:]
+
+        self.coord_table.insert_many(coords_data_1)
+        self.empl_table.insert_many(employees_data_1)
+
+        step_1_shapes = (self.coord_table.shape, self.empl_table.shape)
+
+        try:
+            with shared_connection(self.coord_table, self.empl_table, **params):
+                self.coord_table.insert_many(coords_data_2)
+                self.empl_table.insert_many(employees_data_2)
+                raise RuntimeError
+        except RuntimeError:
+            pass
+
+        self.assertEqual(step_1_shapes, (self.coord_table.shape, self.empl_table.shape))
+
+        try:
+            with self.coord_table.transaction():
+                self.coord_table.insert_many(coords_data_2)
+                raise RuntimeError
+        except RuntimeError:
+            pass
+
+        self.assertEqual(step_1_shapes[0], self.coord_table.shape)
+
+        try:
+            with self.empl_table.transaction():
+                self.empl_table.insert_many(employees_data_2)
+                raise RuntimeError
+        except RuntimeError:
+            pass
+
+        self.assertEqual(step_1_shapes[1], self.empl_table.shape)
+
+        with shared_connection(self.coord_table, self.empl_table, **params):
+            self.coord_table.insert_many(coords_data_2)
+            self.empl_table.insert_many(employees_data_2)
+            step_2_shapes = (self.coord_table.shape, self.empl_table.shape)
+        
+        self.assertEqual(step_2_shapes, (self.coord_table.shape, self.empl_table.shape))
+        
     
     def test_big_operations(self):
         

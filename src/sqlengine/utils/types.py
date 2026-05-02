@@ -1,10 +1,10 @@
 import sqlite3
-from typing import Protocol, Self, Any, TypeGuard
+from typing import Protocol, Self, TypeGuard
 
 class CustomType(Protocol):
     @classmethod
     def from_sql(cls, sql : bytes) -> Self: ...
-    def to_sql(self) -> str | int | float | None: ...
+    def to_sql(self) -> str | int | float | str | bytes | None: ...
 
 
 type SqlValue = str | int | float | str | bytes | None | CustomType
@@ -12,17 +12,19 @@ type SqlRow   = tuple[SqlValue, ...]
 type SqlType  = type[str | int | float | str | bytes | CustomType]
 
 
-types_map : dict[str, str] = {
-    int.__name__     : "INTEGER",
-    float.__name__   : "REAL",
-    str.__name__     : "TEXT",
-    bytes.__name__   : "BLOB",
+# https://docs.python.org/3/library/sqlite3.html#sqlite-and-python-types
+types_map : dict[type, str] = {
+    int     : "INTEGER",
+    float   : "REAL",
+    str     : "TEXT",
+    bytes   : "BLOB",
 }
 
 
 def is_custom_type(type_: SqlType) -> TypeGuard[type[CustomType]]:
     return (
         type_ not in (str, int, float, bytes)
+        and isinstance(type_, type)
         and hasattr(type_, "from_sql")
         and hasattr(type_, "to_sql")
     )

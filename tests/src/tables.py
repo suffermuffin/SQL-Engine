@@ -1,7 +1,4 @@
-import sqlite3
-from typing import Literal
-
-from sqlengine import SqlTableMixin, Schema, types
+from sqlengine import SqlTableMixin, Schema
 
 
 class Point:
@@ -25,7 +22,7 @@ class Employees(SqlTableMixin):
 
     __tablename__ = "MyDB"
     __columns__   = ["ID", "name", "surname", "salary", "position"]
-    __types__     = ["INT", "TEXT", "TEXT", "FLOAT", "TEXT"]
+    __types__     = [int, str, str, float, "TEXT NOT NULL"]
     __primary__   = ["ID", "name"]
 
 

@@ -28,8 +28,16 @@ class SqlTableMixin:
         __tablename__ (Optional[str]): Name of the table that will be used in queries. 
             If omitted in inherited class declaration, then it will take the class name.
         __columns__ (list[str]): Colum names of the table
-        __types__ (list[str]): Colum types of the table
+        __types__ (list[SqlType | str]): Colum types of the table
         __primary__ (list[str]): List of primary keys
+
+    Examples:
+        >>> class Employees(SqlTableMixin):
+        >>>     __columns__   = ["ID", "name", "surname", "salary", "position"]
+        >>>     __types__     = [int, str, str, float, "TEXT NOT NULL"]
+        >>>     __primary__   = ["ID", "name"]
+        >>> 
+        >>> table = Employees(":memory:")
     """
 
     __tablename__ : str
@@ -41,6 +49,7 @@ class SqlTableMixin:
         
         self.database = database
         self.connection_params = connection_params
+        self.__types_sql__ : list[str]
 
         self._validate_attributes()
         self._register_types()
@@ -77,7 +86,9 @@ class SqlTableMixin:
 
     def _register_types(self):
         
-        resolved = []
+        resolved : list[str] = []
+        assert_register_types = False
+
         for type_ in self.__types__:
             
             if isinstance(type_, str):
@@ -85,19 +96,24 @@ class SqlTableMixin:
                 continue
             
             if is_custom_type(type_):
-                register_type(type_, type_.__name__)
-                resolved.append(type_.__name__)
-                logger.debug(f'Registered type `{type_.__name__}` in sqlite3')
-                continue
-
-            sql_type = types_map.get(type_.__name__, None)
+                ctname = type_.__name__.upper()
+                register_type(type_, ctname)
+                resolved.append(ctname)
+                assert_register_types = True
+                logger.debug(f'Registered type `{ctname}` in sqlite3')
+                continue 
             
-            if not sql_type:
-                raise ValueError(f"Can't resolve type {type_} for sql mapping")
+            sql_type = types_map.get(type_, None)
+            
+            if sql_type is None:
+                raise TypeError(f"Can't resolve type `{type_}` from `__types__`, available python types: {list(types_map.keys())}")
             
             resolved.append(sql_type)
+        
+        if assert_register_types and ("detect_types" not in self.connection_params):
+            self.connection_params.update(dict(detect_types=sqlite3.PARSE_DECLTYPES))
 
-        self.__types__ = resolved
+        self.__types_sql__ = resolved
         
 
     def _validate_write_db(self, force_drop : bool):
@@ -158,6 +174,7 @@ class SqlTableMixin:
             self._trans.commit()
 
         finally:
+            self._trans_cursor.close()
             self._trans.close()
             del(self._trans_cursor)
             del(self._trans)
@@ -239,7 +256,7 @@ class SqlTableMixin:
        
         query = sql.create_table(
             self.tablename, self.columns, 
-            self.types, self.primary
+            self.types_sql, self.primary
         )
 
         self.execute(query)
@@ -343,7 +360,7 @@ class SqlTableMixin:
                 values are corresponding new values to set
 
         Example:
-            >>> # This will set "unemployed" as Occupation and 0.0 as Salary
+            >>> # This will set "unemployed" as `Occupation` and 0.0 as `Salary`
             >>> # for all the salespeople and CEO
             >>> from sqlengine import sqlgen as sql
             >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
@@ -504,9 +521,9 @@ class SqlTableMixin:
 
     
     @overload
-    def __getitem__(self, key : slice) -> list[SqlRow]: ...
-    @overload
     def __getitem__(self, key : SqlValue | list[SqlValue]) -> SqlRow: ...
+    @overload
+    def __getitem__(self, key : slice) -> list[SqlRow]: ...
     
     def __getitem__(self, key : SqlValue | list[SqlValue] | slice) -> SqlRow | list[SqlRow]:
         """ Get row by primary key """
@@ -526,17 +543,16 @@ class SqlTableMixin:
             start = key.start or self.min_value(self.primary[0])
             stop  = key.stop  or self.max_value(self.primary[0])
             step  = key.step  or 1
-            
+
             logger.debug(f"Transformed: {start}, {stop}, {step}")
-            
-            assert isinstance(start, int)
-            assert isinstance(stop, int)
-            assert isinstance(step, int)
+
+            if not (isinstance(start, int) and isinstance(stop, int)):
+                raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
 
             if abs(step) == 1:
                 where = f"{self.primary[0]} BETWEEN {min(start, stop)} AND {max(start, stop)}"
                 query = sql.select(self.tablename, where_clause=where, order_by=self.primary[0])
-                rows = self.fetchall(query)
+                rows  = self.fetchall(query)
                 return rows if step > 0 else list(reversed(rows))
             
 
@@ -555,9 +571,15 @@ class SqlTableMixin:
 
     
     @property
-    def types(self) -> list[str]:
-        """ List of table column dtypes """
-        return list(map(lambda x: x if isinstance(x, str) else x.__name__, self.__types__))
+    def types(self) -> list[SqlType | str]:
+        """ List of table column dtypes as declared"""
+        return self.__types__
+    
+    
+    @property
+    def types_sql(self) -> list[str]:
+        """ List of table column dtypes converted to SQL native and registered types """
+        return self.__types_sql__
 
     
     @property

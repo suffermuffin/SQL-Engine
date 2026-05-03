@@ -11,6 +11,27 @@ logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 @contextmanager
 def shared_connection(*args : SqlTableMixin, **connection_params):
+    """
+    Creates shared connection across one or more databases for multiple tables by
+    manipulating their transaction attributes
+
+    Args:
+        *args (SqlTableMixin): tuple of instances of table classes inherited from `SqlTableMixin`
+        **connection_params (dict): Params to create connections with. This argument will be shared
+            across different connections. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
+    
+    Examples:
+
+        >>> from sqlengine.utils import shared_connection
+        >>> with shared_connection(table1, table2, **table1.connection_params):
+        >>>     for row1, row2 in zip(table1, table2):
+        >>>         id1  = row1[table1.row_id("ID")]
+        >>>         temp = row2[table1.row_id("temp")]
+        >>>         id2  = row2[table2.row_id("ID")]
+        >>>         if id1 == id2:
+        >>>             where = sql.where_equals("ID", id2)
+        >>>             table_e.update(where, {"salary" : temp})
+    """
 
     tables_in_trans = [table.__class__.__name__ for table in args if table.in_transaction()]
     

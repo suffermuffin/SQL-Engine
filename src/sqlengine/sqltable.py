@@ -146,7 +146,7 @@ class SqlTableMixin:
         
         Examples:
 
-            >>> from src.sqlengine import sqlgen as sql
+            >>> from sqlengine import sqlgen as sql
             >>> with table.transaction():
             >>>     for idx, name, age in table:
             >>>         where = sql.where_equals("ID", idx)
@@ -352,7 +352,7 @@ class SqlTableMixin:
     
     def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
         """
-        Updates columns based on `where_clause` 
+        Update columns based on `where_clause` 
     
         Args:
             where_clause (str): describes search filter with SQL condition query
@@ -383,12 +383,13 @@ class SqlTableMixin:
     
     
     def delete_rows(self, where_clause : str) -> None:
+        """ delete all rows based on `where_clause` filter """
         query = sql.delete_rows(self.tablename, where_clause)
         return self.execute(query)
 
     
     def delete_eq(self, column : str, equals : SqlValue | Sequence[SqlValue]) -> None:
-        """ Deletes row, where `column` values are equal to `equals` """
+        """ Delete row, where `column` values are equal to `equals` """
         where_clause = sql.where_equals(column, equals)
         return self.delete_rows(where_clause)
     
@@ -429,7 +430,7 @@ class SqlTableMixin:
         """ 
         Returns rows or `return_columns` of rows where `column` value is equal to `equals`.
         Interface/shortcut for `select` method. This executes query in form of
-        "SELECT `return_columns` FROM table WHERE `column` [= | IN] `equals`"
+        "SELECT `return_columns` FROM table WHERE `column` [ = | IN ] `equals`"
         
         Args:
             column (str): column which rows to compare to `equals`.
@@ -462,8 +463,16 @@ class SqlTableMixin:
     
 
     def head(self, n : int = 5) -> list[SqlRow]:
+        """ Returns first `n` rows unordered """
         query = sql.select(self.tablename)
         return self.fetchmany(query, n)
+    
+
+    def row_id(self, column : str) -> int:
+        """ Returns id of given column name. Usefull to get value index of the row. """
+        if column not in self.columns:
+            raise ValueError(f"No column `{column}` in columns. Available: {[self.columns]}")
+        return self.columns.index(column)
     
 
     def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:

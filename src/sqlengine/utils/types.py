@@ -3,8 +3,12 @@ from typing import Protocol, Self, TypeGuard
 
 class CustomType(Protocol):
     @classmethod
-    def from_sql(cls, sql : bytes) -> Self: ...
-    def to_sql(self) -> str | int | float | str | bytes | None: ...
+    def from_sql(cls, sql : bytes) -> Self: 
+        """ Method that accepts bytes and returns own object implemention """
+        ...
+    def to_sql(self) -> str | int | float | str | bytes | None: 
+        """ Method that converts object implementation to native sqlite3 value """
+        ...
 
 
 type SqlValue = str | int | float | str | bytes | None | CustomType
@@ -31,6 +35,13 @@ def is_custom_type(type_: SqlType) -> TypeGuard[type[CustomType]]:
 
 
 def register_type(cls : type[CustomType], type_name : str | None = None) -> None:
+    """ 
+    Register custom type to be able to store it in tables 
+    
+    Args:
+        cls (CustomType): Class that implements `from_sql(cls, sql : bytes) -> Self` and `to_sql(self) -> str | int | float | str | bytes | None`
+        type_name (Optional[str]): Colname that would be linked to this type
+    """
 
     if not is_custom_type(cls):
         raise AttributeError(f"Provided class `{cls.__name__}` does not provide `to_sql` and/or `from_sql` methods")

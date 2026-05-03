@@ -14,6 +14,7 @@ class Schema(TypedDict):
 
 
 def get_database_tablenames(database : str, cursor : sqlite3.Cursor | None = None) -> list[str]:
+    """ Returns all table names of provided `database` path """
 
     query = (
         "SELECT name FROM sqlite_schema WHERE "
@@ -34,6 +35,7 @@ def get_database_tablenames(database : str, cursor : sqlite3.Cursor | None = Non
         
 
 def get_table_schema(database : str, tablename : str, cursor : sqlite3.Cursor | None = None) -> Schema | None:
+    """ Constructs `Schema` from provided `database` and `tablename` if this table exists """
     
     query = f"PRAGMA table_info({tablename});"
 
@@ -58,6 +60,7 @@ def get_table_schema(database : str, tablename : str, cursor : sqlite3.Cursor | 
 
 
 def get_database_schemas(database : str) -> list[Schema]:
+    """ Reads provided `database` path and outputs gathered schemas of tables inside it """
 
     if not os.path.exists(database):
         raise FileNotFoundError(f"File not exists: {database}")
@@ -99,7 +102,7 @@ def table_from_database(database : str, tablename : str, **kwargs) -> SqlTableMi
 def table_from_database(database : str, tablename : None = None, **kwargs) -> list[SqlTableMixin]: ...
 
 def table_from_database(database : str, tablename : str | None = None, **kwargs) -> list[SqlTableMixin] | SqlTableMixin:
-    """ Dynamically builds class from table schema in provided database """
+    """ Dynamically builds table class(es) from provided database """
     
     schemas = get_database_schemas(database)
     

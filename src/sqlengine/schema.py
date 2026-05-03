@@ -1,16 +1,12 @@
 import os
 import sqlite3
-from typing import TypedDict, overload
+from typing import overload
 
 from .sqltable import SqlTableMixin
-from .utils.types import SqlType
+from .utils.types import Schema
 
 
-class Schema(TypedDict):
-    tablename : str
-    columns   : list[str]
-    types     : list[SqlType | str]
-    primary   : list[str]
+
 
 
 def get_database_tablenames(database : str, cursor : sqlite3.Cursor | None = None) -> list[str]:

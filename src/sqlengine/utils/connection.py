@@ -2,7 +2,6 @@ import sqlite3
 import logging
 import os
 
-
 from contextlib import contextmanager
 from ..sqltable import SqlTableMixin
 

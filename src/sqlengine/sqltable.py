@@ -1,12 +1,12 @@
 import logging
 import os
 import sqlite3
-import warnings
 from contextlib import contextmanager
 from typing import Any, Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
-from .utils.types import SqlRow, SqlValue, SqlType, register_type, is_custom_type, types_map
+from .utils.types import (SqlRow, SqlValue, SqlType, Schema, 
+                        register_type, is_custom_type, types_map)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -266,8 +266,7 @@ class SqlTableMixin:
         """ Drops table if it exists. """
         
         if not confirm:
-            warnings.warn("In `drop_table`: pass `confirm=True` to drop the table")
-            return
+            raise ValueError("To drop table you have to pass `confirm=True`")
         
         self.execute(sql.drop_table(self.tablename))
 
@@ -633,9 +632,8 @@ class SqlTableMixin:
     
     
     @property
-    def schema(self):
+    def schema(self) -> Schema:
         """ Table schema """
-        from .schema import Schema
 
         return Schema({
             "tablename": self.__tablename__,

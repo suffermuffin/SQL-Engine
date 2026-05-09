@@ -19,7 +19,7 @@ TEST_DB    = "temp/test.db"
 
 _TEARDOWM = False
 
-format_logging("CRITICAL")
+format_logging("INFO")
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,9 @@ class TestSqlTable(unittest.TestCase):
             logger.info(f"Downloading {CHINOOK_DB}")
             download_file(CHINOOK_URL, CHINOOK_DB)
         
-        cls.coord_table    = Coordinates(TEST_DB, True)
-        cls.empl_table     = Employees(TEST_DB, True)
-        cls.coord_table_s  = schema.table_from_schema(":memory:", coord_schema)
+        cls.coord_table   = Coordinates(TEST_DB, True)
+        cls.empl_table    = Employees(TEST_DB, True)
+        cls.coord_table_s = schema.table_from_schema(":memory:", coord_schema)
 
         logger.info('Setup complete')
 
@@ -77,11 +77,8 @@ class TestSqlTable(unittest.TestCase):
     
     
     def test_getitem_single_primary(self):
-        logger.info("Testing __getitem__ with single primary...")
         
         self.coord_table.insert_many(coords_data)
-
-        logger.info(f"Coord table shape: {self.coord_table.shape}")
 
         for row_or, row_re in zip(coords_data[:5], self.coord_table[:5]):
             self.assertEqual(row_or[0], row_re[0])
@@ -94,11 +91,8 @@ class TestSqlTable(unittest.TestCase):
         
     
     def test_getitem_double_primary(self):
-        logger.info("Testing __getitem__ with double primary...")
         
         self.empl_table.insert_many(employees_data)
-
-        logger.info(f"Employess table shape: {self.empl_table.shape}")
 
         for data_or in employees_data:
             key_1, key_2 = data_or[:2]
@@ -111,7 +105,6 @@ class TestSqlTable(unittest.TestCase):
 
 
     def test_schema(self):
-        logger.info("Testing schema...")
         
         chinook_tables = schema.table_from_database(CHINOOK_DB)
         schemas        = schema.get_database_schemas(CHINOOK_DB)
@@ -125,8 +118,6 @@ class TestSqlTable(unittest.TestCase):
     
     
     def test_transaction_nesting(self):
-        
-        logger.info("Testing Transaction Nesting...")
         
         with self.assertRaises(RuntimeError):
             with self.coord_table.transaction():
@@ -146,8 +137,6 @@ class TestSqlTable(unittest.TestCase):
     
     def test_shared_connection(self):
         
-        logger.info("Testing shared connection...")
-
         with shared_connection(self.coord_table, self.empl_table, self.coord_table_s, **self.coord_table.connection_params):
             self.coord_table_s.create_table()
 
@@ -160,9 +149,7 @@ class TestSqlTable(unittest.TestCase):
             self.assertEqual(self.coord_table.shape, self.coord_table_s.shape)
 
     
-    def test_connection_commit(self):
-
-        logger.info("Testing connection commits...")
+    def test_shared_connection_commit(self):
 
         params = self.coord_table.connection_params
         step_1_shapes = (self.coord_table.shape, self.empl_table.shape)
@@ -175,8 +162,8 @@ class TestSqlTable(unittest.TestCase):
         self.assertEqual(step_2_shapes, (self.coord_table.shape, self.empl_table.shape))
         self.assertNotEqual(step_1_shapes, step_2_shapes)
 
-        self.coord_table.drop_table(True)
-        self.coord_table.create_table()
+    
+    def test_transaction_commit_coord(self):
 
         step_1_coord_shape = self.coord_table.shape
 
@@ -186,9 +173,9 @@ class TestSqlTable(unittest.TestCase):
 
         self.assertEqual(step_2_coord_shape, self.coord_table.shape)
         self.assertNotEqual(step_1_coord_shape, step_2_coord_shape)
-
-        self.empl_table.drop_table(True)
-        self.empl_table.create_table()
+    
+    
+    def test_transaction_commit_empl(self):
 
         step_1_empl_shape = self.empl_table.shape
 
@@ -200,10 +187,8 @@ class TestSqlTable(unittest.TestCase):
         self.assertNotEqual(step_1_empl_shape, step_2_empl_shape)
 
 
-    def test_connection_rolback(self):
+    def test_shared_connection_rollback(self):
         
-        logger.info("Testing connection rollback...")
-
         params = self.coord_table.connection_params
 
         coords_data_1, coords_data_2 = coords_data[:len(coords_data)//2], coords_data[len(coords_data)//2:]
@@ -218,29 +203,11 @@ class TestSqlTable(unittest.TestCase):
             with shared_connection(self.coord_table, self.empl_table, **params):
                 self.coord_table.insert_many(coords_data_2)
                 self.empl_table.insert_many(employees_data_2)
-                raise RuntimeError
-        except RuntimeError:
+                raise ValueError
+        except ValueError:
             pass
 
         self.assertEqual(step_1_shapes, (self.coord_table.shape, self.empl_table.shape))
-
-        try:
-            with self.coord_table.transaction():
-                self.coord_table.insert_many(coords_data_2)
-                raise RuntimeError
-        except RuntimeError:
-            pass
-
-        self.assertEqual(step_1_shapes[0], self.coord_table.shape)
-
-        try:
-            with self.empl_table.transaction():
-                self.empl_table.insert_many(employees_data_2)
-                raise RuntimeError
-        except RuntimeError:
-            pass
-
-        self.assertEqual(step_1_shapes[1], self.empl_table.shape)
 
         with shared_connection(self.coord_table, self.empl_table, **params):
             self.coord_table.insert_many(coords_data_2)
@@ -248,18 +215,47 @@ class TestSqlTable(unittest.TestCase):
             step_2_shapes = (self.coord_table.shape, self.empl_table.shape)
         
         self.assertEqual(step_2_shapes, (self.coord_table.shape, self.empl_table.shape))
+    
+
+    def test_transaction_rollback_coords(self):
         
+        coords_data_1, coords_data_2 = coords_data[:len(coords_data)//2], coords_data[len(coords_data)//2:]
+        self.coord_table.insert_many(coords_data_1)
+        step_1_shape = self.coord_table.shape
+
+        try:
+            with self.coord_table.transaction():
+                self.coord_table.insert_many(coords_data_2)
+                raise ValueError
+        except ValueError:
+            pass
+
+        self.assertEqual(step_1_shape, self.coord_table.shape)
+
+    
+    def test_transaction_rollback_empl(self):
+        
+        employees_data_1, employees_data_2 = employees_data[:len(employees_data)//2], employees_data[len(employees_data)//2:]
+
+        self.empl_table.insert_many(employees_data_1)
+        step_1_shape = self.empl_table.shape
+
+        try:
+            with self.empl_table.transaction():
+                self.empl_table.insert_many(employees_data_2)
+                raise ValueError
+        except ValueError:
+            pass
+
+        self.assertEqual(step_1_shape, self.empl_table.shape)
+
     
     def test_big_operations(self):
         
-        logger.info("Testing big operations...")
-
         chinook_tables = schema.table_from_database(CHINOOK_DB)
         biggest_table = max(chinook_tables, key=lambda x: len(x))
 
         copy_biggest_table = schema.table_from_schema(":memory:", biggest_table.schema)
-
-        logger.info(f"Copping table with shape: {biggest_table.shape}")
 
         with shared_connection(copy_biggest_table, biggest_table):
             
@@ -271,8 +267,6 @@ class TestSqlTable(unittest.TestCase):
                 copy_biggest_table.insert_many(batch)
             
             self.assertEqual(biggest_table.shape, copy_biggest_table.shape)
-
-            logger.info(f"Copy done: Final shape: {copy_biggest_table.shape}")
 
 
 if __name__ == '__main__':

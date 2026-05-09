@@ -38,17 +38,11 @@ def shared_connection(*args : SqlTableMixin, **connection_params):
     if tables_in_trans:
         raise RuntimeError(f"Tables {tables_in_trans} are already in transaction")
     
-    unique_databases = set([table.database for table in args])
-
-    logger.debug(f"Starting shared transaction across {len(unique_databases)} databases")
-
+    unique_databases = set(table.database for table in args)
     database_map : dict[str, list[SqlTableMixin]] = {}
     
     for db in unique_databases:
-        database_map[db] = []
-
-    for table in args:
-        database_map[table.database].append(table)
+        database_map[db] = [table for table in args if table.database == db]
 
     connections : list[sqlite3.Connection] = []
 
@@ -62,6 +56,8 @@ def shared_connection(*args : SqlTableMixin, **connection_params):
             setattr(table, "_trans", con)
             setattr(table, "_trans_cursor", table_cur)
 
+    logger.debug(f"Starting shared transaction across {len(database_map)} databases")
+    
     try:
         yield
     

@@ -1,19 +1,20 @@
 import sqlite3
-from typing import Protocol, Self, TypeGuard
+from typing import Protocol, Self, TypeGuard, TypedDict
+
 
 class CustomType(Protocol):
     @classmethod
     def from_sql(cls, sql : bytes) -> Self: 
-        """ Method that accepts bytes and returns own object implemention """
+        """ Method that accepts bytes and returns object instance """
         ...
     def to_sql(self) -> str | int | float | str | bytes | None: 
-        """ Method that converts object implementation to native sqlite3 value """
+        """ Method that converts object instance to native sqlite3 value """
         ...
 
 
-type SqlValue = str | int | float | str | bytes | None | CustomType
+type SqlValue = str | int | float | bytes | None | CustomType
 type SqlRow   = tuple[SqlValue, ...]
-type SqlType  = type[str | int | float | str | bytes | CustomType]
+type SqlType  = type[str | int | float | bytes | CustomType]
 
 
 # https://docs.python.org/3/library/sqlite3.html#sqlite-and-python-types
@@ -23,6 +24,13 @@ types_map : dict[type, str] = {
     str     : "TEXT",
     bytes   : "BLOB",
 }
+
+
+class Schema(TypedDict):
+    tablename : str
+    columns   : list[str]
+    types     : list[SqlType | str]
+    primary   : list[str]
 
 
 def is_custom_type(type_: SqlType) -> TypeGuard[type[CustomType]]:

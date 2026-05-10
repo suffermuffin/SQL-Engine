@@ -5,18 +5,19 @@ import os
 from contextlib import contextmanager
 from ..sqltable import SqlTableMixin
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 
 @contextmanager
-def shared_connection(*args : SqlTableMixin, **connection_params):
+def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connection_params):
     """
     Creates shared connection across one or more databases for multiple tables by
     manipulating their transaction attributes
 
     Args:
         *args (SqlTableMixin): tuple of instances of table classes inherited from `SqlTableMixin`
+        autocommit (bool): If `True`, will commit changes at the end of transaction
         **connection_params (dict): Params to create connections with. This argument will be shared
             across different connections. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
     
@@ -55,6 +56,7 @@ def shared_connection(*args : SqlTableMixin, **connection_params):
             table_cur = con.cursor()
             setattr(table, "_trans", con)
             setattr(table, "_trans_cursor", table_cur)
+            table._is_managed_transaction = True
 
     logger.debug(f"Starting shared transaction across {len(database_map)} databases")
     
@@ -71,12 +73,14 @@ def shared_connection(*args : SqlTableMixin, **connection_params):
         raise e
     
     else:
-        for con in connections:
-            con.commit()
+        if autocommit:
+            for con in connections:
+                con.commit()
     
     finally:
         
         for table in args:
+            table._is_managed_transaction = False
             table.tx_cursor.close()
             delattr(table, "_trans_cursor")
             delattr(table, "_trans")

@@ -8,7 +8,7 @@ from .utils import sqlgen as sql
 from .utils.types import (SqlRow, SqlValue, SqlType, Schema, 
                         register_type, is_custom_type, types_map)
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 
@@ -44,16 +44,17 @@ class SqlTableMixin:
     __columns__   : list[str]
     __types__     : list[SqlType | str]
     __primary__   : list[str]
+    __types_sql__ : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
         self.database = database
         self.connection_params = connection_params
-        self.__types_sql__ : list[str]
+        self._is_managed_transaction = False
 
         self._validate_attributes()
         self._register_types()
-        self._validate_write_db(force_drop)
+        self._write_db(force_drop)
 
     
     def _validate_attributes(self):
@@ -73,7 +74,7 @@ class SqlTableMixin:
         n_types, n_cols = len(self.__types__), len(self.__columns__)
 
         if not n_types == n_cols:
-            raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
+            raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
         
         wrong_primaries = [
             prim for prim in self.__primary__ if
@@ -116,14 +117,14 @@ class SqlTableMixin:
         self.__types_sql__ = resolved
         
 
-    def _validate_write_db(self, force_drop : bool):
+    def _write_db(self, force_drop : bool):
 
         if self.database == ":memory:":
             logger.debug(f"{self.tablename}: Using in-memory database")
             return
         
         if not os.path.exists(self.database):
-            logger.info(f'{self.tablename}: {self.database} does not exist. Creating...')
+            logger.debug(f'{self.tablename}: {self.database} does not exist. Creating...')
             parent_dir = self.database.removesuffix(os.path.basename(self.database))
             if parent_dir: 
                 os.makedirs(parent_dir, exist_ok=True)
@@ -139,10 +140,50 @@ class SqlTableMixin:
         return sqlite3.connect(self.database, **self.connection_params)
     
 
+    def open_connection(self):
+        """ Opens unmanaged transaction """
+        if self.in_transaction():
+            raise RuntimeError("Can't re-open existing connection")
+        
+        self._trans = self.connect()
+        self._trans_cursor = self._trans.cursor()
+
+    
+    def close_connection(self):
+        """ Closes unmanaged transaction """
+        if not self.in_transaction():
+            return
+        
+        if self._is_managed_transaction:
+            raise RuntimeError("Can't manually close managed transaction")
+        
+        self._trans_cursor.close()
+        self._trans.close()
+        del(self._trans_cursor)
+        del(self._trans)
+
+
+    def commit(self):
+        if not self.in_transaction():
+            raise RuntimeError("Can't commit outside transaction mode")
+        
+        self._trans.commit()
+
+
+    def rollback(self):
+        if not self.in_transaction():
+            raise RuntimeError("Can't rollback outside transaction mode")
+        
+        self._trans.rollback()
+    
+
     @contextmanager
-    def transaction(self): 
+    def transaction(self, autocommit : bool = True):
         """ 
-        Creates context manager to use class methods in transaction 
+        Creates context manager to use class methods in transaction
+
+        Args:
+            autocommit (bool): If `True`, will commit changes at the end of transaction
         
         Examples:
 
@@ -153,12 +194,9 @@ class SqlTableMixin:
             >>>         table.update(where, {"Age" : age + 1})
             >>>     print(table.select())
         """
-        if self.in_transaction():
-            raise RuntimeError("Nested transactions are not permitted")
-
-        self._trans = self.connect()
-        self._trans_cursor = self._trans.cursor()
         
+        self.open_connection()
+        self._is_managed_transaction = True
         logger.debug(f"{self.tablename}: Transaction started")
         
         try:
@@ -171,13 +209,12 @@ class SqlTableMixin:
             raise e
         
         else:
-            self._trans.commit()
+            if autocommit:
+                self._trans.commit()
 
         finally:
-            self._trans_cursor.close()
-            self._trans.close()
-            del(self._trans_cursor)
-            del(self._trans)
+            self._is_managed_transaction = False
+            self.close_connection()
             logger.debug(f"{self.tablename}: Transaction finished")
 
     
@@ -544,7 +581,7 @@ class SqlTableMixin:
 
         if len(self.primary) > 1:
             if not (isinstance(key, list) and len(key) == len(self.primary)):
-                raise IndexError("Key expected to be list of equal lenght to `primary`")
+                raise IndexError("Key expected to be list of equal length to `primary`")
             where = " AND ".join([sql.where_equals(col, val) for col, val in zip(self.primary, key)])
             query = sql.select(self.tablename, where_clause=where)
             return self.fetchone(query)
@@ -576,7 +613,10 @@ class SqlTableMixin:
             
             return rows if step >= 0 else list(reversed(rows))
         
-        return self.select_eq(self.primary[0], key)[0]
+        where = sql.where(self.primary[0], "=", key)
+        query = sql.select(self.tablename, where_clause=where)
+
+        return self.fetchone(query)
 
 
     @property

@@ -6,7 +6,7 @@ from typing import Any, Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
 from .utils.types import (SqlRow, SqlValue, SqlType, Schema, 
-                        register_type, is_custom_type, types_map)
+                        register_type, is_custom_type, pytype_to_sqltype)
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -98,17 +98,17 @@ class SqlTableMixin:
             
             if is_custom_type(type_):
                 ctname = type_.__name__.upper()
+                
                 register_type(type_, ctname)
                 resolved.append(ctname)
-                assert_register_types = True
+                
+                if not assert_register_types:
+                    assert_register_types = True
+                
                 logger.debug(f'Registered type `{ctname}` in sqlite3')
                 continue 
             
-            sql_type = types_map.get(type_, None)
-            
-            if sql_type is None:
-                raise TypeError(f"Can't resolve type `{type_}` from `__types__`, available python types: {list(types_map.keys())}")
-            
+            sql_type = pytype_to_sqltype(type_)
             resolved.append(sql_type)
         
         if assert_register_types and ("detect_types" not in self.connection_params):

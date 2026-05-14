@@ -17,11 +17,13 @@ from src.tables import Employees, Coordinates, Point, coord_schema, COORDS_DATA,
 TEST_DIR   = "temp/"
 CHINOOK_DB = "temp/chinook.db"
 TEST_DB    = "temp/test.db"
+LOG_LVL    = os.getenv("LOG_LEVEL", "CRITICAL").upper()
 
 _TEARDOWM = False
 
-format_logging("INFO")
-logging.getLogger("sqlengine").setLevel(logging.CRITICAL)
+
+format_logging(LOG_LVL)
+logging.getLogger("sqlengine").setLevel(LOG_LVL)
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +288,7 @@ class TestSqlTable(unittest.TestCase):
         self.coord_table.insert_many(COORDS_DATA)
         
         for idx, _, _, temp in self.coord_table:
+            assert isinstance(temp, float)
             self.coord_table.update(f"ID = {idx}", {"temp" : temp*2})
 
         self.coord_table.commit()
@@ -426,6 +429,7 @@ class TestSqlTable(unittest.TestCase):
             self.coord_table.insert_many(COORDS_DATA)
 
             for idx, _, _, temp in self.coord_table:
+                assert isinstance(temp, float)
                 self.coord_table.update(f"ID = {idx}", {"temp" : temp*2})
 
         self.assertEqual(len(self.coord_table), len(COORDS_DATA))

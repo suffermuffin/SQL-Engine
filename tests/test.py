@@ -90,6 +90,8 @@ class TestSqlTable(unittest.TestCase):
     
     
     def test_getitem_single_primary(self):
+
+        # logger.info("Testing get item with single primary")
         
         self.coord_table.insert_many(COORDS_DATA)
 
@@ -100,7 +102,7 @@ class TestSqlTable(unittest.TestCase):
             assert isinstance(row_re[2], Point)
             self.assertEqual(row_or[2].x, row_re[2].x)
             self.assertEqual(row_or[2].y, row_re[2].y)
-            self.assertEqual(row_or[3], row_re[3])
+            self.assertEqual(row_or[3],   row_re[3])
         
     
     def test_getitem_double_primary(self):
@@ -109,7 +111,7 @@ class TestSqlTable(unittest.TestCase):
 
         for data_or in EMPLOYEES_DATA:
             key_1, key_2 = data_or[:2]
-            data_re = self.empl_table[[key_1, key_2]]
+            data_re = self.empl_table[key_1, key_2]
             self.assertEqual(len(data_or), len(data_re))
             for val_or, val_re in zip(data_or, data_re):
                 self.assertEqual(val_or, val_re)
@@ -274,10 +276,14 @@ class TestSqlTable(unittest.TestCase):
             
             copy_biggest_table.create_table()
 
-            query = sql.select(biggest_table.tablename)
+            biggest_table.select()
 
-            for batch in biggest_table.fetchall_iterator(query, 1000):
+            logging.getLogger("sqlengine").setLevel("CRITICAL")
+            
+            for batch in biggest_table.fetchmany_iterator(1000):
                 copy_biggest_table.insert_many(batch)
+            
+            logging.getLogger("sqlengine").setLevel(LOG_LVL)
             
             self.assertEqual(biggest_table.shape, copy_biggest_table.shape)
 
@@ -289,12 +295,13 @@ class TestSqlTable(unittest.TestCase):
         
         for idx, _, _, temp in self.coord_table:
             assert isinstance(temp, float)
-            self.coord_table.update(f"ID = {idx}", {"temp" : temp*2})
+            self.coord_table.update().set("temp", temp*2).where.eq("ID", idx)
+            self.coord_table.execute_statements()
 
         self.coord_table.commit()
         self.coord_table.close_connection()
 
-        rows = self.coord_table.select()
+        rows = self.coord_table.fetch_select('all')
 
         self.assertEqual(len(rows), len(COORDS_DATA))
 
@@ -430,9 +437,55 @@ class TestSqlTable(unittest.TestCase):
 
             for idx, _, _, temp in self.coord_table:
                 assert isinstance(temp, float)
-                self.coord_table.update(f"ID = {idx}", {"temp" : temp*2})
+                self.coord_table.update().set("temp", temp*2).where.eq("ID", idx)
+                self.coord_table.execute_statements()
 
         self.assertEqual(len(self.coord_table), len(COORDS_DATA))
+
+    
+    def test_delete(self):
+
+        table = self.coord_table
+
+        table.insert_many(COORDS_DATA)
+        lenght_init = len(table)
+        table.delete().where.eq("ID", 0)
+        table.execute_statements()
+        length_after = len(table)
+        self.assertEqual(lenght_init - 1, length_after)
+        self.assertEqual(table[0], None)
+
+    
+    def test_multiple_statements(self):
+
+        table = self.coord_table
+
+        table.insert_many(COORDS_DATA)
+        table.delete().where.eq("ID", 0)
+        table.update().set("name", "new_loc").where.eq("ID", 1)
+
+        table.execute_statements()
+
+        self.assertEqual(len(table), len(COORDS_DATA) - 1)
+        loc = table[1][1]
+        self.assertEqual(loc, "new_loc")
+
+    
+    def test_statements_in_transaction(self):
+
+        table = self.coord_table_s
+
+        with table.transaction():
+            table.create_table()
+            table.insert_many(COORDS_DATA)
+            table.delete().where.eq("ID", 0)
+            table.update().set("name", "new_loc").where.eq("ID", 1)
+
+            table.execute_statements()
+
+            self.assertEqual(len(table), len(COORDS_DATA) - 1)
+            loc = table[1][1]
+            self.assertEqual(loc, "new_loc")
 
 
 

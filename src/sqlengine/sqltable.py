@@ -2,9 +2,10 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Any, Sequence, Literal, Generator, overload
+from typing import Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
+from .utils.statements import Statement, Select, Update, Delete
 from .utils.types import (SqlRow, SqlValue, SqlType, Schema, 
                         register_type, is_custom_type, pytype_to_sqltype)
 
@@ -51,10 +52,13 @@ class SqlTableMixin:
         self.database = database
         self.connection_params = connection_params
         self._is_managed_transaction = False
+        self._statements : list[Statement] = []
 
         self._validate_attributes()
         self._register_types()
         self._write_db(force_drop)
+        
+        self._select = Select(self.tablename)
 
     
     def _validate_attributes(self):
@@ -224,22 +228,22 @@ class SqlTableMixin:
 
     
     @overload
-    def _fetch(self, query : str, method : Literal["fetchone"], *args) -> SqlRow: ...
+    def _fetch(self, query : str, *args, method : Literal["fetchone"]) -> SqlRow: ...
     @overload
-    def _fetch(self, query : str, method : Literal["fetchall", "fetchmany"], *args) -> list[SqlRow]: ...
+    def _fetch(self, query : str, *args, method : Literal["fetchall"]) -> list[SqlRow]: ...
 
-    def _fetch(self, query : str, method : Literal["fetchone", "fetchall", "fetchmany"], *args) -> SqlRow | list[SqlRow]:
+    def _fetch(self, query : str, *args, method : Literal["fetchone", "fetchall"]) -> SqlRow | list[SqlRow]:
         
-        logger.debug(f"{self.tablename}: {query}")
+        logger.debug(f"{self.tablename}: {query=} {args=}")
 
         if self.in_transaction():
-            self._trans_cursor.execute(query)
-            return getattr(self._trans_cursor, method)(*args)
+            self._trans_cursor.execute(query, *args)
+            return getattr(self._trans_cursor, method)()
 
         with self.connect() as conn:
             cursor = conn.cursor()
-            cursor.execute(query)
-            return getattr(cursor, method)(*args)
+            cursor.execute(query, *args)
+            return getattr(cursor, method)()
         
     
     def _execute(self, query : str, *args, method : Literal["execute", "executemany"] = "execute") -> None:
@@ -287,6 +291,16 @@ class SqlTableMixin:
         """
         return self._execute(query, *args, method="executemany")
     
+
+    def execute_statements(self):
+
+        logger.debug(f"Statements length: {len(self._statements)}")
+        
+        while self._statements:
+            statement   = self._statements.pop(0)
+            query, args = statement.build()
+            self._execute(query, args, method='execute')
+    
     
     def create_table(self) -> None:
         """ Create table if not exists """
@@ -308,7 +322,7 @@ class SqlTableMixin:
         self.execute(sql.drop_table(self.tablename))
 
 
-    def fetchone(self, query : str) -> SqlRow:
+    def fetchone(self, query : str, *args) -> SqlRow:
         """
         Fetch first row based on `query`
 
@@ -318,10 +332,10 @@ class SqlTableMixin:
         Returns:
             out (SqlRow): Single row
         """
-        return self._fetch(query, "fetchone")
+        return self._fetch(query, *args, method="fetchone")
     
 
-    def fetchmany(self, query : str, size : int = 1) -> list[SqlRow]:
+    def fetchmany(self, query : str, *args, size : int = 1) -> list[SqlRow]:
         """
         Fetch first `size` rows based on `query`
 
@@ -332,10 +346,19 @@ class SqlTableMixin:
         Returns:
             out (list[SqlRow]): list of `size` rows
         """
-        return self._fetch(query, "fetchmany", size)
+        logger.debug(f"{self.tablename}: {query} {args}")
+
+        if self.in_transaction():
+            self._trans_cursor.execute(query, *args)
+            return self._trans_cursor.fetchmany(size)
+
+        with self.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, *args)
+            return cursor.fetchmany(size)
     
 
-    def fetchall(self, query : str) -> list[SqlRow]:
+    def fetchall(self, query : str, *args) -> list[SqlRow]:
         """
         Fetch all rows based on `query`
 
@@ -345,8 +368,25 @@ class SqlTableMixin:
         Returns:
             out (list[SqlRow]): list of rows
         """
-        return self._fetch(query, "fetchall")
+        return self._fetch(query, *args, method="fetchall")
     
+    @overload
+    def fetch_select(self, fetch : Literal['one']) -> SqlRow: ...
+    @overload
+    def fetch_select(self, fetch : Literal['many'], size : int) -> list[SqlRow]: ...
+    @overload
+    def fetch_select(self, fetch : Literal['all']) -> list[SqlRow]: ...
+    
+    def fetch_select(self, fetch : Literal['one', 'many', 'all'] = 'all', size : int = 1) -> SqlRow | list[SqlRow]:
+        query, args = self._select.build()
+        self.select.reset()
+
+        if fetch == 'all':
+            return self.fetchall(query, args)
+        elif fetch == 'many':
+            return self.fetchmany(query, args, size=size)
+        return self.fetchone(query, args)
+
     
     def insert(self, *args, **kwargs) -> None:
         """ 
@@ -386,7 +426,7 @@ class SqlTableMixin:
         self.execute(query, args)
 
     
-    def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
+    def update(self) -> Update:
         """
         Update columns based on `where_clause` 
     
@@ -402,8 +442,9 @@ class SqlTableMixin:
             >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
             >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})
         """
-        query = sql.update(self.tablename, where_clause, set_values)
-        self.execute(query)
+        update = Update(self.tablename)
+        self._statements.append(update)
+        return update
 
 
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
@@ -418,90 +459,22 @@ class SqlTableMixin:
         return self.executemany(query, rows)
     
     
-    def delete_rows(self, where_clause : str) -> None:
-        """ delete all rows based on `where_clause` filter """
-        query = sql.delete_rows(self.tablename, where_clause)
-        return self.execute(query)
-
-    
-    def delete_eq(self, column : str, equals : SqlValue | Sequence[SqlValue]) -> None:
-        """ Delete row, where `column` values are equal to `equals` """
-        where_clause = sql.where_equals(column, equals)
-        return self.delete_rows(where_clause)
-    
-    
-    def select(self, columns : str | list[str] = "*", where_clause : str | None = None, order_by : str | None = None) -> list[SqlRow]:
-        """
-        Fetch all rows of `columns` from the table with optional `where_clause` filter.\n
-        This executes query in form of "SELECT `columns` FROM table WHERE `where_clause`"
-        
-        Args:
-            columns (str | list[str]): columns of which rows to return. If "*" is provided -
-                returns all.
-            where_clause (str): describes search filter with SQL condition query
-            order_by (str | None): ORDER BY column key
-        
-        Returns:
-            out (list[SqlRow]): list of all rows, where values are in order of provided
-                `columns`
-
-        Examples:
-
-            >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Occupation", "IN", ["seller", "worker"])
-            >>> table.select(["ID", "Name"], where)
-            >>> table.select("*", "ID = 0")
-        """
-        query = sql.select(self.tablename, columns, where_clause, order_by)
-        return self.fetchall(query)
+    def delete(self) -> Delete:
+        delete = Delete(self.tablename)
+        self._statements.append(delete)
+        return delete
     
 
-    def select_eq(
-            self, 
-            column         : str,
-            equals         : SqlValue | Sequence[SqlValue],
-            return_columns : str | list[str] = "*",
-            order_by       : str | None      = None
-        ) -> list[SqlRow]: 
-        """ 
-        Returns rows or `return_columns` of rows where `column` value is equal to `equals`.
-        Interface/shortcut for `select` method. This executes query in form of
-        "SELECT `return_columns` FROM table WHERE `column` [ = | IN ] `equals`"
-        
-        Args:
-            column (str): column which rows to compare to `equals`.
-            equals (SqlValue | list[SqlValue]): values to search for in `column`.
-            return_columns (str | list[str]): rows of which columns to return. If "*" is provided -
-                returns all.
-            order_by (str | None): ORDER BY column key
-        
-        Returns:
-            out (list[SqlRow]): list of all rows, where values are in order of provided
-                `return_columns`
+    @property
+    def select(self):
+        if self._select.is_active():
+            raise RuntimeError("Can't run more then one active select statements at a time. First, call one of the fetch methods.")
+        return self._select
 
-        Examples:
-
-            >>> table.select_eq("Occupation", ["seller", "worker"], ["ID", "Name"])
-            >>> table.select_eq("ID", 0, "*")
-        """
-        where_clause = sql.where_equals(column, equals)
-        return self.select(return_columns, where_clause, order_by)
-    
-
-    def max_value(self, column : str, where_clause : str | None = None) -> SqlValue:
-        query = sql.max_value(self.tablename, column, where_clause)
-        return self.fetchone(query)[0]
-    
-    
-    def min_value(self, column : str, where_clause : str | None = None) -> SqlValue:
-        query = sql.min_value(self.tablename, column, where_clause)
-        return self.fetchone(query)[0]
-    
 
     def head(self, n : int = 5) -> list[SqlRow]:
         """ Returns first `n` rows unordered """
-        query = sql.select(self.tablename)
-        return self.fetchmany(query, n)
+        return self.fetch_select('many', size=n)
     
 
     def row_id(self, column : str) -> int:
@@ -511,12 +484,11 @@ class SqlTableMixin:
         return self.columns.index(column)
     
 
-    def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
+    def fetchmany_iterator(self, batch_size: int) -> Generator[list[SqlRow], None, None]:
         """
         Yields all rows in batches, each batch in its own transaction.
         
         Args:
-            query (str): SQL query
             batch_size (int): Size of each batch
 
         Examples:
@@ -525,15 +497,18 @@ class SqlTableMixin:
             >>> where = sql.where("Age" ">" 30)
             >>> query = sql.select(table.tablename, where)
             >>> with table.transaction():
-            >>>     for batch in table.fetchall_iterator(query, 1000):
+            >>>     for batch in table.fetchmany_iterator(1000):
             >>>         process_batch(batch)
         """
         if not self.in_transaction():
             raise RuntimeError("To use the `fetchall_iterator()` method you have \
                     to keep open the transaction with `transaction()` manager")
+        
+        query, exec_args = self._select.build()
+        self._select.reset()
 
         iter_cursor = self._trans.cursor()
-        iter_cursor.execute(query)
+        iter_cursor.execute(query, exec_args)
 
         while batch := iter_cursor.fetchmany(batch_size):
             yield batch
@@ -551,9 +526,10 @@ class SqlTableMixin:
     
 
     def __len__(self) -> int:
-        length = self.fetchone(sql.count(self.tablename))[0]
+        self.select().aggregate("COUNT")
+        length = self.fetch_select('one')[0]
         if not isinstance(length, int):
-            return 0
+            raise ValueError("Whata duck")
         return length
     
 
@@ -572,29 +548,41 @@ class SqlTableMixin:
 
     
     @overload
-    def __getitem__(self, key : SqlValue | list[Any]) -> SqlRow: ...
+    def __getitem__(self, key : tuple[SqlValue, ...] | SqlValue) -> SqlRow: ...
     @overload
     def __getitem__(self, key : slice) -> list[SqlRow]: ...
     
-    def __getitem__(self, key : SqlValue | list[Any] | slice) -> SqlRow | list[SqlRow]:
+    def __getitem__(self, key : tuple[SqlValue, ...] | SqlValue | slice ) -> SqlRow | list[SqlRow]:
         """ Get row by primary key """
 
         if len(self.primary) > 1:
-            if not (isinstance(key, list) and len(key) == len(self.primary)):
-                raise IndexError("Key expected to be list of equal length to `primary`")
-            where = " AND ".join([sql.where_equals(col, val) for col, val in zip(self.primary, key)])
-            query = sql.select(self.tablename, where_clause=where)
-            return self.fetchone(query)
-        
-        if isinstance(key, list):
-            raise IndexError("Key expected to be a single value of primary column")
+            if not isinstance(key, tuple):
+                raise IndexError("`key` expected to be a tuple for multi index tables")
+            if not len(key) == len(self.primary):
+                raise IndexError("`key` expected to be a tuple of equal leght to `primary` for multi index tables")
 
         if isinstance(key, slice):
-            logger.debug(f"Got slice: {key}")
             
-            start = key.start or self.min_value(self.primary[0])
-            stop  = key.stop  or self.max_value(self.primary[0])
-            step  = key.step  or 1
+            logger.debug(f"Got slice: {key}")
+
+            primary = self.primary[0]
+
+            if key.start is None:
+                self.select()(primary).aggregate('MIN')
+                start = self.fetch_select('one')[0] or 0
+            else:
+                start = key.start
+
+            if key.stop is None:
+                self.select()(primary).aggregate('MAX')
+                stop = self.fetch_select('one')[0] or 0
+            else:
+                stop = key.stop
+
+            if key.step is None:
+                step = 1
+            else:
+                step = key.step
 
             logger.debug(f"Transformed: {start}, {stop}, {step}")
 
@@ -602,21 +590,26 @@ class SqlTableMixin:
                 raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
 
             if abs(step) == 1:
-                where = f"{self.primary[0]} BETWEEN {min(start, stop)} AND {max(start, stop)}"
-                query = sql.select(self.tablename, where_clause=where, order_by=self.primary[0])
-                rows  = self.fetchall(query)
-                return rows if step > 0 else list(reversed(rows))
+                _start = min(start, stop)
+                _stop  = max(start, stop)
+                self.select.order_by(primary, step > 0).where.between(primary, _start, _stop)
+                return self.fetch_select('all')
             
-
             ids = [i for i in range(start, stop, step)]
-            rows = self.select_eq(self.primary[0], ids, order_by=self.primary[0])
-            
-            return rows if step >= 0 else list(reversed(rows))
-        
-        where = sql.where(self.primary[0], "=", key)
-        query = sql.select(self.tablename, where_clause=where)
+            self.select.order_by(primary, step > 0).where.inside(primary, ids)
 
-        return self.fetchone(query)
+            return self.fetch_select('one')
+        
+        
+        if isinstance(key, tuple):
+            select = self.select
+            for col, val in zip(self.primary, key):
+                select.where.eq(col, val)
+            return self.fetch_select('one')
+
+
+        self.select.where.eq(self.primary[0], key)
+        return self.fetch_select('one')
 
 
     @property
@@ -681,4 +674,3 @@ class SqlTableMixin:
             "types"    : self.__types__,
             "primary"  : self.__primary__
         })
- 

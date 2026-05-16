@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Sequence, Literal, Generator, Self, TYPE_CHECKING
-from abc import ABC, abstractmethod
+from typing     import Sequence, Literal, Generator, Self, TYPE_CHECKING
+from abc        import ABC, abstractmethod
 
 if TYPE_CHECKING:
     from .statements import Statement 
@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 from . import sqlgen as sql
 from .types import SqlValue, SqlRow
+from .html_repr import repr_html
 
 
 class Where[T : Statement]:
@@ -18,6 +19,10 @@ class Where[T : Statement]:
 
         self.clause   : list[str] = []
         self.args     : list[SqlValue] = []
+
+    @property
+    def then(self) -> T:
+        return self._statement
     
     def op(self, column : str, value : SqlValue, operator : str) -> Self:
         self.clause.append(f"{column} {operator} ?")
@@ -72,9 +77,16 @@ class Where[T : Statement]:
         self.args = []
         self.clause = []
 
-    @property
-    def then(self) -> T:
-        return self._statement
+    def __str__(self) -> str:
+        return self._statement.__str__()
+
+    def __repr__(self) -> str:
+        return self._statement.__repr__()
+
+    def _repr_html_(self):
+        if isinstance(self._statement, Select):
+            return self._statement._repr_html_()
+        return None
     
     def __len__(self) -> int:
         return len(self.args)
@@ -132,6 +144,16 @@ class Statement(ABC):
         return self._where
     
 
+    def __repr__(self) -> str:
+        query, _ = self.build()
+        return f"{self.__command__}: {query}"
+    
+
+    def __str__(self) -> str:
+        query, _ = self.build()
+        return query
+    
+
 class MutationalStatement(Statement, ABC):
 
     def execute(self):
@@ -149,6 +171,7 @@ class Select(Statement):
         self._columns   : list[str] = []
         self._order_by  : list[str] = []
         self._aggregate : str | None = None
+        self._limit     : int | None = None
 
 
     def __call__(self, *columns : str) -> Self:
@@ -168,6 +191,11 @@ class Select(Statement):
     def order_by(self, column : str, ascending : bool = True) -> Self:
         order = "ASC" if ascending else "DESC"
         self._order_by.append(f"{column} {order}")
+        return self
+    
+
+    def limit(self, n : int) -> Self:
+        self._limit = n
         return self
     
 
@@ -223,15 +251,35 @@ class Select(Statement):
         columns = "*" if not columns else columns
         columns = columns if not self._aggregate else f"{self._aggregate}({columns})"
 
-        query = sql.select(self._table.tablename, columns, where_clause, order)
+        if self._limit:
+            limit = "?"
+            args  = (*args, self._limit)
+        
+        else:
+            limit = None
+        
+        query = sql.select(self._table.tablename, columns, where_clause, order, limit)
         
         return query, args
     
     
     def _reset(self):
-        self._columns = []
-        self._order_by = []
+        self._columns   = []
+        self._order_by  = []
         self._aggregate = None
+        self._limit     = None
+
+
+    def _repr_html_(self):
+        
+        if self._aggregate:
+            return None
+        
+        limit     = 26
+        columns   = self._table.columns if len(self._columns) == 0 or "*" in self._columns else self._columns
+        repr_rows = self.fetchmany(limit)
+
+        return repr_html(self._table.tablename, columns, repr_rows, limit=limit-1)
     
 
 class Delete(MutationalStatement):

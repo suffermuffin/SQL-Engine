@@ -98,9 +98,10 @@ def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
 
 def select(
       tablename   : str,
-      columns     : str | list[str] = "*",
-      where_clause: str | None      = None,
-      order_by    : str | None      = None
+      columns     : str | list[str]  = "*",
+      where_clause: str | None       = None,
+      order_by    : str | None       = None,
+      limit       : int | str | None = None
     ) -> str: 
     """ Creates select query """
     
@@ -109,6 +110,7 @@ def select(
     query  = f"SELECT {_columns} FROM {tablename}"
     query += f" WHERE {where_clause}" if where_clause else ""
     query += f" ORDER BY {order_by}" if order_by else ""
+    query += f" LIMIT {limit}" if limit else ""
     query += ";"
 
     return query

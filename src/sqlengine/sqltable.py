@@ -1,12 +1,13 @@
 import logging
 import os
 import sqlite3
-from contextlib import contextmanager
-from typing import Sequence, Literal, Generator, overload
 
-from .utils import sqlgen as sql
+from contextlib import contextmanager
+from typing     import Sequence, Literal, Generator, overload
+
+from .utils            import sqlgen as sql
 from .utils.statements import Select, Update, Delete
-from .utils.html_repr import repr_html
+from .utils.html_repr  import repr_html
 
 from .utils.types import SqlRow, SqlValue, SqlType, Schema
 from .utils.types import register_type, is_custom_type, pytype_to_sqltype
@@ -233,7 +234,7 @@ class SqlTableMixin:
 
     def _fetch(self, query : str, args : tuple[SqlValue, ...] = (), method : Literal["fetchone", "fetchall"] = "fetchall") -> SqlRow | list[SqlRow]:
         
-        logger.debug(f"{self.tablename}: {query=} {args=}")
+        logger.debug(f"{self.tablename}: {query} {args}")
 
         if self.in_transaction():
             self._trans_cursor.execute(query, args)
@@ -416,7 +417,7 @@ class SqlTableMixin:
 
     def head(self, n : int = 5) -> list[SqlRow]:
         """ Returns first `n` rows unordered """
-        return self.select.fetchmany(n)
+        return self.select.limit(n).fetchall()
     
 
     def __repr__(self) -> str:
@@ -435,7 +436,7 @@ class SqlTableMixin:
         if self.database == ":memory:":
             return None
         
-        return repr_html(self.tablename, self.columns, self.head(10))
+        return repr_html(self.tablename, self.columns, self.head(11), 10)
     
 
     def __len__(self) -> int:
@@ -513,7 +514,7 @@ class SqlTableMixin:
             ids = [i for i in range(start, stop, step)]
   
             select.order_by(primary, step > 0).where.in_(primary, ids)
-            return select.fetchone()
+            return select.fetchall()
         
         
         if isinstance(key, tuple):

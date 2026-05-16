@@ -90,32 +90,53 @@ class TestSqlTable(unittest.TestCase):
     
     def test_getitem_single_primary(self):
 
-        # logger.info("Testing get item with single primary")
+        cases = [
+            slice(1, 6, 2),
+            slice(10, 6, -1),
+            slice(None, 5, None),
+            slice(None, 100, None),
+            slice(None, None, 3),
+            slice(None, None, 100),
+        ]
+        table = self.coord_table
         
-        self.coord_table.insert_many(COORDS_DATA)
+        table.open_connection()
+        table.insert_many(COORDS_DATA)
+        
+        for s in cases:
+            with self.subTest(slice=s):
 
-        for row_or, row_re in zip(COORDS_DATA[:5], self.coord_table[:5]):
-            self.assertEqual(row_or[0], row_re[0])
-            self.assertEqual(row_or[1], row_re[1])
-            self.assertIsInstance(row_re[2], Point)
-            assert isinstance(row_re[2], Point)
-            self.assertEqual(row_or[2].x, row_re[2].x)
-            self.assertEqual(row_or[2].y, row_re[2].y)
-            self.assertEqual(row_or[3],   row_re[3])
+                for row_or, row_re in zip(COORDS_DATA[s], self.coord_table[s]):
+                    self.assertEqual(row_or[0], row_re[0])
+                    self.assertEqual(row_or[1], row_re[1])
+                    self.assertIsInstance(row_re[2], Point)
+                    assert isinstance(row_re[2], Point)
+                    self.assertEqual(row_or[2].x, row_re[2].x)
+                    self.assertEqual(row_or[2].y, row_re[2].y)
+                    self.assertEqual(row_or[3],   row_re[3])
         
+        table.close_connection()
+            
     
     def test_getitem_double_primary(self):
         
-        self.empl_table.insert_many(EMPLOYEES_DATA)
+        table = self.empl_table
 
-        for data_or in EMPLOYEES_DATA:
-            key_1, key_2 = data_or[:2]
-            data_re = self.empl_table[key_1, key_2]
-            self.assertEqual(len(data_or), len(data_re))
-            for val_or, val_re in zip(data_or, data_re):
-                self.assertEqual(val_or, val_re)
+        cases = [(keys[0], keys[1]) for keys in EMPLOYEES_DATA]
+
+        table.open_connection()
+        table.insert_many(EMPLOYEES_DATA)
+
+        for i, (k1, k2) in enumerate(cases):
+            with self.subTest(key=(k1, k2)):
+                re_row = table[k1, k2]
+                or_row = EMPLOYEES_DATA[i]
+                self.assertEqual(len(re_row), len(or_row))
+                for val_re, val_or in zip(re_row, or_row):
+                    self.assertEqual(val_re, val_or)
         
-        self.empl_table.drop_table(True)
+        table.close_connection()
+
 
 
     def test_schema(self):
@@ -479,6 +500,78 @@ class TestSqlTable(unittest.TestCase):
             self.assertEqual(len(table), len(COORDS_DATA) - 1)
             loc = table[1][1]
             self.assertEqual(loc, "new_loc")
+
+    
+    def test_select_statements(self):
+        table = schema.table_from_database(CHINOOK_DB, "Customer")
+
+        table.open_connection()
+        
+        limit = 15
+
+        with self.subTest("limit"):
+            rows = table.select.limit(limit).fetchall()
+            self.assertEqual(len(rows), limit)
+
+        with self.subTest("Order, limit and column"):
+            rows = table.select("CustomerId").limit(limit).order_by("CustomerId").fetchall()
+            self.assertEqual(len(rows), limit)
+            for row, idx in zip(rows, range(1, limit+1)):
+                self.assertEqual(len(row), 1)
+                self.assertEqual(row[0], idx)
+        
+
+        with self.subTest("Complex expression"):
+
+            rows = table\
+                .select("CustomerId", "Address", "City", "SupportRepId")\
+                .where\
+                    .in_("SupportRepId", (3,4))\
+                .then\
+                .order_by("CustomerId")\
+                .limit(50)\
+                .fetchall()
+            
+        table.close_connection()
+
+
+    def test_update_statement(self):
+        _table  = schema.table_from_database(CHINOOK_DB, "Customer")
+        _schema = _table.schema
+
+        table = schema.table_from_schema(":memory:", _schema)
+        
+        _table.open_connection()
+        table.open_connection()
+        
+        table.create_table()
+
+        
+        with self.subTest("Copy customers"):
+            for _row in _table.select.fetchmany_iterator(50):
+                table.insert_many(_row)
+            
+            table.commit()
+
+        _table.close_connection()
+        
+        
+        with self.subTest("Update cities"):
+        
+            new_city = "Karaganda"
+            table.update.set("City", new_city).where.eq("Country", "Czech Republic").then.execute()
+            rows = table.select("City").where.in_("CustomerId", (6, 5)).then.fetchall()
+
+            for row in rows:
+                self.assertEqual(new_city, row[0])
+
+        
+        with self.subTest("Compare all cities"):
+            rows = table.select("City").where.eq("Country", "Czech Republic").then.fetchall()
+            for row in rows:
+                self.assertEqual(new_city, row[0])
+        
+        table.close_connection()
 
 
 

@@ -5,9 +5,11 @@ from contextlib import contextmanager
 from typing import Sequence, Literal, Generator, overload
 
 from .utils import sqlgen as sql
-from .utils.statements import Statement, Select, Update, Delete
-from .utils.types import (SqlRow, SqlValue, SqlType, Schema, 
-                        register_type, is_custom_type, pytype_to_sqltype)
+from .utils.statements import Select, Update, Delete
+from .utils.html_repr import repr_html
+
+from .utils.types import SqlRow, SqlValue, SqlType, Schema
+from .utils.types import register_type, is_custom_type, pytype_to_sqltype
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -412,21 +414,6 @@ class SqlTableMixin:
         return self.executemany(query, rows)
 
 
-    @property
-    def update(self) -> Update:
-        return Update(self)
-
-    
-    @property
-    def delete(self) -> Delete:
-        return Delete(self)
-    
-
-    @property
-    def select(self) -> Select:
-        return Select(self)
-
-
     def head(self, n : int = 5) -> list[SqlRow]:
         """ Returns first `n` rows unordered """
         return self.select.fetchmany(n)
@@ -441,6 +428,14 @@ class SqlTableMixin:
             f"types={sql.format_list(self.types)}, "
             f"primary={sql.format_list(self.primary)})"
         )
+    
+
+    def _repr_html_(self):
+
+        if self.database == ":memory:":
+            return None
+        
+        return repr_html(self.tablename, self.columns, self.head(10))
     
 
     def __len__(self) -> int:
@@ -529,6 +524,21 @@ class SqlTableMixin:
 
         select.where.eq(self.primary[0], key)
         return select.fetchone()
+    
+
+    @property
+    def update(self) -> Update:
+        return Update(self)
+
+    
+    @property
+    def delete(self) -> Delete:
+        return Delete(self)
+    
+
+    @property
+    def select(self) -> Select:
+        return Select(self)
 
 
     @property

@@ -34,7 +34,7 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
         >>>             table_e.update(where, {"salary" : temp})
     """
 
-    tables_in_trans = [table.__class__.__name__ for table in args if table.in_transaction()]
+    tables_in_trans = [(f"{table.__class__.__name__=}, {table.tablename=}, {table.database=}") for table in args if table.in_transaction()]
     
     if tables_in_trans:
         raise RuntimeError(f"Tables {tables_in_trans} are already in transaction")

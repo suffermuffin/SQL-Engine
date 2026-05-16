@@ -1,61 +1,69 @@
-from typing import Sequence, Literal
+from __future__ import annotations
+from typing import Sequence, Literal, Generator, Self, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
+if TYPE_CHECKING:
+    from .statements import Statement 
+    from ..sqltable  import SqlTableMixin
+
 from . import sqlgen as sql
-from .types import SqlValue
+from .types import SqlValue, SqlRow
 
 
-class Where:
+class Where[T : Statement]:
 
-    def __init__(self): 
+    def __init__(self, statement : T):
+        
+        self._statement = statement
+
         self.clause   : list[str] = []
         self.args     : list[SqlValue] = []
     
-    def op(self, column : str, value : SqlValue, operator : str):
+    def op(self, column : str, value : SqlValue, operator : str) -> Self:
         self.clause.append(f"{column} {operator} ?")
         self.args.append(value)
         return self
 
-    def join(self, lop : str = "AND"):
+    def join(self, lop : str = "AND") -> Self:
         joined = f" {lop} ".join(self.clause)
         self.clause = [f"({joined})"]
         return self
 
-    def eq(self, column : str, value : SqlValue):
+    def eq(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "=")
 
-    def neq(self, column : str, value : SqlValue):
+    def neq(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "!=")
     
-    def gt(self, column : str, value : SqlValue):
+    def gt(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, ">")
     
-    def gte(self, column : str, value : SqlValue):
+    def gte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, ">=")
     
-    def lt(self, column : str, value : SqlValue):
+    def lt(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<")
     
-    def lte(self, column : str, value : SqlValue):
+    def lte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<=")
     
-    def inside(self, column : str, values : Sequence[SqlValue]):
+    def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
         placeholder = sql.values_placeholder(len(values))
         self.clause.append(f"{column} IN {placeholder}")
         self.args.extend(values)
         return self
     
-    def between(self, column : str, start : SqlValue, stop : SqlValue):
+    def between(self, column : str, start : SqlValue, stop : SqlValue) -> Self:
         self.clause.append(f"{column} BETWEEN ? AND ?")
         self.args.extend((start, stop))
         return self
     
-    def custom(self, where_clause : str, *args : SqlValue):
+    def custom(self, where_clause : str, *args : SqlValue) -> Self:
         self.clause.append(where_clause)
         self.args.extend(args)
         return self
 
-    def build(self, lop : str = "AND"):
+    def build(self, lop : str = "AND") -> tuple[str, tuple[SqlValue, ...]]:
         where_clause = f" {lop} ".join(self.clause).strip()
         args = tuple(self.args)
         return where_clause, args
@@ -63,20 +71,23 @@ class Where:
     def reset(self):
         self.args = []
         self.clause = []
+
+    @property
+    def then(self) -> T:
+        return self._statement
     
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.args)
-    
+
 
 class Statement(ABC):
 
     __command__ : Literal["SELECT", "INSERT", "UPDATE", "DELETE"]
 
-    def __init__(self, tablename : str) -> None:
-        super().__init__()
+    def __init__(self, table : SqlTableMixin) -> None:
 
-        self.tablename = tablename
-        self._where = Where()
+        self._table = table
+        self._where = Where(self)
 
         self._custom_query : str | None = None
         self._custom_args  : tuple[SqlValue, ...] = ()
@@ -116,25 +127,36 @@ class Statement(ABC):
 
     @property
     def where(self):
+        if self.__command__ == "INSERT":
+            raise AttributeError("INSERT statement does not have where clause")
         return self._where
+    
+
+class MutationalStatement(Statement, ABC):
+
+    def execute(self):
+        query, args = self.build()
+        self._table.execute(query, *args)
 
 
 class Select(Statement):
 
-    def __init__(self, tablename : str) -> None:
-        super().__init__(tablename)
+    __command__ = "SELECT"
+
+    def __init__(self, table : SqlTableMixin) -> None:
+        super().__init__(table)
         
         self._columns   : list[str] = []
         self._order_by  : list[str] = []
         self._aggregate : str | None = None
 
 
-    def __call__(self, *columns : str):
+    def __call__(self, *columns : str) -> Self:
         self._columns.extend(columns)
         return self
     
     
-    def aggregate(self, agr : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']):
+    def aggregate(self, agr : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']) -> Self:
         
         if self._aggregate:
             raise ValueError("Can't aggregate columns multiple times")
@@ -143,16 +165,56 @@ class Select(Statement):
         return self
 
     
-    def order_by(self, column : str, ascending : bool = True):
+    def order_by(self, column : str, ascending : bool = True) -> Self:
         order = "ASC" if ascending else "DESC"
         self._order_by.append(f"{column} {order}")
         return self
     
 
-    def is_active(self):
-        return bool(self._columns or self._order_by or self._aggregate or self._custom_query or self._custom_args)
+    def fetchone(self) -> SqlRow:
+        query, args = self.build()
+        return self._table.fetchone(query, *args)
         
+
+    def fetchmany(self, size : int = 1) -> list[SqlRow]:
+        query, args = self.build()
+        return self._table.fetchmany(query, *args, size=size)
+
     
+    def fetchall(self):
+        query, args = self.build()
+        return self._table.fetchall(query, *args)
+    
+
+    def fetchmany_iterator(self, batch_size: int) -> Generator[list[SqlRow], None, None]:
+        """
+        Yields all rows in batches, each batch in its own transaction.
+        
+        Args:
+            batch_size (int): Size of each batch
+
+        Examples:
+
+            >>> from sqlengine import sqlgen as sql
+            >>> where = sql.where("Age" ">" 30)
+            >>> query = sql.select(table.tablename, where)
+            >>> with table.transaction():
+            >>>     for batch in table.fetchmany_iterator(1000):
+            >>>         process_batch(batch)
+        """
+        if not self._table.in_transaction():
+            raise RuntimeError("To use the `fetchall_iterator()` method you have \
+                    to keep open the transaction of the table with `transaction()` manager")
+        
+        query, exec_args = self.build()
+
+        iter_cursor = self._table.tx_conn.cursor()
+        iter_cursor.execute(query, exec_args)
+
+        while batch := iter_cursor.fetchmany(batch_size):
+            yield batch
+    
+
     def _build(self, where_clause : str, *args : SqlValue):
 
         order   = sql.format_list(self._order_by, brakets=False)
@@ -161,9 +223,8 @@ class Select(Statement):
         columns = "*" if not columns else columns
         columns = columns if not self._aggregate else f"{self._aggregate}({columns})"
 
-        query = sql.select(self.tablename, columns, where_clause, order)
+        query = sql.select(self._table.tablename, columns, where_clause, order)
         
-        self.__init__(self.tablename)
         return query, args
     
     
@@ -173,7 +234,7 @@ class Select(Statement):
         self._aggregate = None
     
 
-class Delete(Statement):
+class Delete(MutationalStatement):
 
     __command__ = "DELETE"
 
@@ -182,19 +243,19 @@ class Delete(Statement):
         if not where_clause:
             raise ValueError("Delete statement must have a where clause")
         
-        query = sql.delete_rows(self.tablename, where_clause)
+        query = sql.delete_rows(self._table.tablename, where_clause)
         return query, args
     
     def _reset(self):
         pass
     
 
-class Update(Statement):
+class Update(MutationalStatement):
 
     __command__ = "UPDATE"
 
-    def __init__(self, tablename : str) -> None:
-        super().__init__(tablename)
+    def __init__(self, table : SqlTableMixin) -> None:
+        super().__init__(table)
         self._set_clauses : list[str] = []
         self._set_args    : list[SqlValue] = []
 
@@ -207,8 +268,10 @@ class Update(Statement):
 
     def _build(self, where_clause : str, *args : SqlValue):
         set_clause = sql.format_list(self._set_clauses, brakets=False)
-        query = f"UPDATE {self.tablename} SET {set_clause} WHERE {where_clause};"
-        return query, tuple(self._set_args + list(args))
+        query = f"UPDATE {self._table.tablename} SET {set_clause} WHERE {where_clause};"
+        set_args = self._set_args.copy()
+        set_args.extend(args)
+        return query, tuple(set_args)
     
     
     def _reset(self):

@@ -7,7 +7,6 @@ import sys
 import warnings
 
 from sqlengine       import schema
-from sqlengine       import sqlgen as sql
 from sqlengine.utils import shared_connection
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
@@ -280,7 +279,7 @@ class TestSqlTable(unittest.TestCase):
 
             logging.getLogger("sqlengine").setLevel("CRITICAL")
             
-            for batch in biggest_table.fetchmany_iterator(1000):
+            for batch in biggest_table.select("*").fetchmany_iterator(1000):
                 copy_biggest_table.insert_many(batch)
             
             logging.getLogger("sqlengine").setLevel(LOG_LVL)
@@ -295,13 +294,12 @@ class TestSqlTable(unittest.TestCase):
         
         for idx, _, _, temp in self.coord_table:
             assert isinstance(temp, float)
-            self.coord_table.update().set("temp", temp*2).where.eq("ID", idx)
-            self.coord_table.execute_statements()
+            self.coord_table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
 
         self.coord_table.commit()
         self.coord_table.close_connection()
 
-        rows = self.coord_table.fetch_select('all')
+        rows = self.coord_table.select.fetchall()
 
         self.assertEqual(len(rows), len(COORDS_DATA))
 
@@ -437,8 +435,7 @@ class TestSqlTable(unittest.TestCase):
 
             for idx, _, _, temp in self.coord_table:
                 assert isinstance(temp, float)
-                self.coord_table.update().set("temp", temp*2).where.eq("ID", idx)
-                self.coord_table.execute_statements()
+                self.coord_table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
 
         self.assertEqual(len(self.coord_table), len(COORDS_DATA))
 
@@ -449,8 +446,7 @@ class TestSqlTable(unittest.TestCase):
 
         table.insert_many(COORDS_DATA)
         lenght_init = len(table)
-        table.delete().where.eq("ID", 0)
-        table.execute_statements()
+        table.delete.where.eq("ID", 0).then.execute()
         length_after = len(table)
         self.assertEqual(lenght_init - 1, length_after)
         self.assertEqual(table[0], None)
@@ -461,12 +457,11 @@ class TestSqlTable(unittest.TestCase):
         table = self.coord_table
 
         table.insert_many(COORDS_DATA)
-        table.delete().where.eq("ID", 0)
-        table.update().set("name", "new_loc").where.eq("ID", 1)
-
-        table.execute_statements()
+        table.delete.where.eq("ID", 0).then.execute()
+        table.update.set("name", "new_loc").where.eq("ID", 1).then.execute()
 
         self.assertEqual(len(table), len(COORDS_DATA) - 1)
+        
         loc = table[1][1]
         self.assertEqual(loc, "new_loc")
 
@@ -478,10 +473,8 @@ class TestSqlTable(unittest.TestCase):
         with table.transaction():
             table.create_table()
             table.insert_many(COORDS_DATA)
-            table.delete().where.eq("ID", 0)
-            table.update().set("name", "new_loc").where.eq("ID", 1)
-
-            table.execute_statements()
+            table.delete.where.eq("ID", 0).then.execute()
+            table.update.set("name", "new_loc").where.eq("ID", 1).then.execute()
 
             self.assertEqual(len(table), len(COORDS_DATA) - 1)
             loc = table[1][1]

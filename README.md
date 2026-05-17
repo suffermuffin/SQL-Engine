@@ -15,7 +15,7 @@
 - [7. Syntax sugar](#7-syntax-sugar)
   - [7.1. Single Index](#71-single-index)
   - [7.2. Multi Index](#72-multi-index)
-  - [7.3. Lenght And Shape](#73-lenght-and-shape)
+  - [7.3. Length And Shape](#73-length-and-shape)
 - [8. More examples](#8-more-examples)
   - [8.1. Instantiate](#81-instantiate)
   - [8.2. Insert single row](#82-insert-single-row)
@@ -28,6 +28,7 @@
   - [8.9. Delete rows](#89-delete-rows)
   - [8.10. Select all](#810-select-all)
   - [8.11. Create transaction rows batch generator](#811-create-transaction-rows-batch-generator)
+  - [8.12 Iterate over multiple tables](#812-iterate-over-multiple-tables)
 
 
 # 1. Sql-Engine
@@ -392,7 +393,7 @@ table[3, "test3"] # -> (3, 'test3', 'surname3', 133.3, 'pos3')
 Employees: SELECT * FROM Employees WHERE ID = ? AND name = ?; (3, 'test3')
 ```
 
-## 7.3. Lenght And Shape
+## 7.3. Length And Shape
 
 You can get number of rows in your table with `len`:
 
@@ -620,4 +621,52 @@ batch 1: [('Kate', 3), ('Angela', 4)]
 batch 2: [('Mark', 5), ('Max', 6)]
 batch 3: [('Maria', 7)]
 EmployeesDB: Transaction finished
+```
+---
+
+## 8.12 Iterate over multiple tables
+
+```py
+
+from sqlengine.utils import shared_connection
+from sqlengine import SqlTableMixin
+
+
+class Employees(SqlTableMixin):
+
+    __columns__ = ["ID", "Salary"]
+    __types__   = [int, float]
+    __primary__ = ["ID"]
+
+
+class Temp(SqlTableMixin):
+
+    __columns__ = ["ID", "Temperature"]
+    __types__   = [int, float]
+    __primary__ = ["ID"]
+
+
+table1 = Employees("temp/data1.db", True)
+table2 = Temp("temp/data2.db", True)
+
+table1.insert_many([(1, 25000), (2, 30000), (3, 45000)])
+table2.insert_many([(1, 2.5), (2, 30), (3, 12.5)])
+
+
+with shared_connection(table1, table2, **table1.connection_params):
+    for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
+        if id1 == id2:
+            table1.update.where.eq("ID", id2).then.set("Salary", temp).execute()
+
+table1.select.fetchall() # -> [(1, 2.5), (2, 30.0), (3, 12.5)]
+```
+
+```sql
+-- Debug output --
+Starting shared transaction across 2 databases
+Employees: UPDATE Employees SET Salary = ? WHERE ID = ?; (2.5, 1)
+Employees: UPDATE Employees SET Salary = ? WHERE ID = ?; (30.0, 2)
+Employees: UPDATE Employees SET Salary = ? WHERE ID = ?; (12.5, 3)
+Shared transaction finished
+Employees: SELECT * FROM Employees; ()
 ```

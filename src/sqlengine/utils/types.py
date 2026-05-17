@@ -17,20 +17,20 @@ type SqlRow   = tuple[SqlValue, ...]
 type SqlType  = type[str | int | float | bytes | CustomType]
 
 
-# https://docs.python.org/3/library/sqlite3.html#sqlite-and-python-types
-types_map : dict[type, str] = {
-    int     : "INTEGER",
-    float   : "REAL",
-    str     : "TEXT",
-    bytes   : "BLOB",
-}
-
-
 class Schema(TypedDict):
     tablename : str
     columns   : list[str]
     types     : list[SqlType | str]
     primary   : list[str]
+
+
+# https://docs.python.org/3/library/sqlite3.html#sqlite-and-python-types
+_TYPES_MAP : dict[type, str] = {
+    int     : "INTEGER",
+    float   : "REAL",
+    str     : "TEXT",
+    bytes   : "BLOB",
+}
 
 
 def is_custom_type(type_: SqlType) -> TypeGuard[type[CustomType]]:
@@ -57,3 +57,11 @@ def register_type(cls : type[CustomType], type_name : str | None = None) -> None
     type_name = type_name if type_name else cls.__name__
     sqlite3.register_adapter(cls, lambda x: x.to_sql())
     sqlite3.register_converter(type_name, cls.from_sql)
+
+
+def pytype_to_sqltype(type_ : type) -> str:
+    """ Converts python type to sql type """
+    if type_ not in _TYPES_MAP:
+        raise TypeError(f"{type_} is not natively supported by sqlite3")
+    
+    return _TYPES_MAP[type_]

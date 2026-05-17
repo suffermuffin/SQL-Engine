@@ -42,7 +42,7 @@ coord_schema : Schema = {
 }
 
 
-employees_data = [
+EMPLOYEES_DATA = [
     (0, "test0", "surname0", 100.0, "pos0"),
     (0, "test1", "surname0", 100.0, "pos0"),
     (1, "test0", "surname1", 111.1, "pos1"),
@@ -53,7 +53,7 @@ employees_data = [
 ]
 
 
-coords_data = [
+COORDS_DATA = [
     (0,  "loc0",  Point(0,0),   0.0),
     (1,  "loc1",  Point(1,1),   1.1),
     (2,  "loc0",  Point(2,2),   2.2),

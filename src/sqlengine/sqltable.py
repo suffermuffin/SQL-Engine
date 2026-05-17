@@ -1,14 +1,18 @@
 import logging
 import os
 import sqlite3
+
 from contextlib import contextmanager
-from typing import Any, Sequence, Literal, Generator, overload
+from typing     import Sequence, Literal, overload
 
-from .utils import sqlgen as sql
-from .utils.types import (SqlRow, SqlValue, SqlType, Schema, 
-                        register_type, is_custom_type, types_map)
+from .utils            import sqlgen as sql
+from .utils.statements import Select, Update, Delete
+from .utils.html_repr  import repr_html
 
-logger = logging.getLogger(__name__)
+from .utils.types import SqlRow, SqlValue, SqlType, Schema
+from .utils.types import register_type, is_custom_type, pytype_to_sqltype
+
+logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 
@@ -44,17 +48,18 @@ class SqlTableMixin:
     __columns__   : list[str]
     __types__     : list[SqlType | str]
     __primary__   : list[str]
+    __types_sql__ : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
         self.database = database
         self.connection_params = connection_params
-        self.__types_sql__ : list[str]
+        self._is_managed_transaction = False
 
         self._validate_attributes()
         self._register_types()
-        self._validate_write_db(force_drop)
-
+        self._write_db(force_drop)
+        
     
     def _validate_attributes(self):
 
@@ -73,7 +78,7 @@ class SqlTableMixin:
         n_types, n_cols = len(self.__types__), len(self.__columns__)
 
         if not n_types == n_cols:
-            raise AttributeError(f'__types__ and __columns__ length mismatch: types = {n_types}, columns = {n_cols}')
+            raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
         
         wrong_primaries = [
             prim for prim in self.__primary__ if
@@ -97,17 +102,17 @@ class SqlTableMixin:
             
             if is_custom_type(type_):
                 ctname = type_.__name__.upper()
+                
                 register_type(type_, ctname)
                 resolved.append(ctname)
-                assert_register_types = True
+                
+                if not assert_register_types:
+                    assert_register_types = True
+                
                 logger.debug(f'Registered type `{ctname}` in sqlite3')
                 continue 
             
-            sql_type = types_map.get(type_, None)
-            
-            if sql_type is None:
-                raise TypeError(f"Can't resolve type `{type_}` from `__types__`, available python types: {list(types_map.keys())}")
-            
+            sql_type = pytype_to_sqltype(type_)
             resolved.append(sql_type)
         
         if assert_register_types and ("detect_types" not in self.connection_params):
@@ -116,14 +121,14 @@ class SqlTableMixin:
         self.__types_sql__ = resolved
         
 
-    def _validate_write_db(self, force_drop : bool):
+    def _write_db(self, force_drop : bool):
 
         if self.database == ":memory:":
             logger.debug(f"{self.tablename}: Using in-memory database")
             return
         
         if not os.path.exists(self.database):
-            logger.info(f'{self.tablename}: {self.database} does not exist. Creating...')
+            logger.debug(f'{self.tablename}: {self.database} does not exist. Creating...')
             parent_dir = self.database.removesuffix(os.path.basename(self.database))
             if parent_dir: 
                 os.makedirs(parent_dir, exist_ok=True)
@@ -139,10 +144,50 @@ class SqlTableMixin:
         return sqlite3.connect(self.database, **self.connection_params)
     
 
+    def open_connection(self):
+        """ Opens unmanaged transaction """
+        if self.in_transaction():
+            raise RuntimeError("Can't re-open existing connection")
+        
+        self._trans = self.connect()
+        self._trans_cursor = self._trans.cursor()
+
+    
+    def close_connection(self):
+        """ Closes unmanaged transaction """
+        if not self.in_transaction():
+            return
+        
+        if self._is_managed_transaction:
+            raise RuntimeError("Can't manually close managed transaction")
+        
+        self._trans_cursor.close()
+        self._trans.close()
+        del(self._trans_cursor)
+        del(self._trans)
+
+
+    def commit(self):
+        if not self.in_transaction():
+            raise RuntimeError("Can't commit outside transaction mode")
+        
+        self._trans.commit()
+
+
+    def rollback(self):
+        if not self.in_transaction():
+            raise RuntimeError("Can't rollback outside transaction mode")
+        
+        self._trans.rollback()
+    
+
     @contextmanager
-    def transaction(self): 
+    def transaction(self, autocommit : bool = True):
         """ 
-        Creates context manager to use class methods in transaction 
+        Creates context manager to use class methods in transaction
+
+        Args:
+            autocommit (bool): If `True`, will commit changes at the end of transaction
         
         Examples:
 
@@ -153,12 +198,9 @@ class SqlTableMixin:
             >>>         table.update(where, {"Age" : age + 1})
             >>>     print(table.select())
         """
-        if self.in_transaction():
-            raise RuntimeError("Nested transactions are not permitted")
-
-        self._trans = self.connect()
-        self._trans_cursor = self._trans.cursor()
         
+        self.open_connection()
+        self._is_managed_transaction = True
         logger.debug(f"{self.tablename}: Transaction started")
         
         try:
@@ -171,13 +213,12 @@ class SqlTableMixin:
             raise e
         
         else:
-            self._trans.commit()
+            if autocommit:
+                self._trans.commit()
 
         finally:
-            self._trans_cursor.close()
-            self._trans.close()
-            del(self._trans_cursor)
-            del(self._trans)
+            self._is_managed_transaction = False
+            self.close_connection()
             logger.debug(f"{self.tablename}: Transaction finished")
 
     
@@ -187,25 +228,29 @@ class SqlTableMixin:
 
     
     @overload
-    def _fetch(self, query : str, method : Literal["fetchone"], *args) -> SqlRow: ...
+    def _fetch(self, query : str, args : tuple[SqlValue, ...], method : Literal["fetchone"]) -> SqlRow: ...
     @overload
-    def _fetch(self, query : str, method : Literal["fetchall", "fetchmany"], *args) -> list[SqlRow]: ...
+    def _fetch(self, query : str, args : tuple[SqlValue, ...], method : Literal["fetchall"]) -> list[SqlRow]: ...
 
-    def _fetch(self, query : str, method : Literal["fetchone", "fetchall", "fetchmany"], *args) -> SqlRow | list[SqlRow]:
+    def _fetch(self, query : str, args : tuple[SqlValue, ...] = (), method : Literal["fetchone", "fetchall"] = "fetchall") -> SqlRow | list[SqlRow]:
         
-        logger.debug(f"{self.tablename}: {query}")
+        logger.debug(f"{self.tablename}: {query} {args}")
 
         if self.in_transaction():
-            self._trans_cursor.execute(query)
-            return getattr(self._trans_cursor, method)(*args)
+            self._trans_cursor.execute(query, args)
+            return getattr(self._trans_cursor, method)()
 
         with self.connect() as conn:
             cursor = conn.cursor()
-            cursor.execute(query)
-            return getattr(cursor, method)(*args)
-        
+            cursor.execute(query, args)
+            return getattr(cursor, method)()
+
+    @overload    
+    def _execute(self, query : str, args : tuple[SqlValue, ...], method : Literal["execute"]) -> None: ...
+    @overload
+    def _execute(self, query : str, args : Sequence[SqlRow], method : Literal["executemany"]) -> None: ...
     
-    def _execute(self, query : str, *args, method : Literal["execute", "executemany"] = "execute") -> None:
+    def _execute(self, query : str, args : tuple[SqlValue, ...] | Sequence[SqlRow] = (), method : Literal["execute", "executemany"] = "execute") -> None:
         """
         Shortcut to connect() -> execute[<many>]() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
@@ -215,40 +260,40 @@ class SqlTableMixin:
             *args (Any): Arguments to the execution
             method (str): "execute" or "executemany"
         """
-        logger.debug(f"{self.tablename}: {query} {args[0] if args else ''}")
+        logger.debug(f"{self.tablename}: {query} {args}")
 
         if self.in_transaction():
-            getattr(self._trans_cursor, method)(query, *args)
+            getattr(self._trans_cursor, method)(query, args)
             return
         
         with self.connect() as conn:
             cursor = conn.cursor()
-            getattr(cursor, method)(query, *args)
+            getattr(cursor, method)(query, args)
             conn.commit()
 
 
-    def execute(self, query : str, *args) -> None:
+    def execute(self, query : str, *args : SqlValue) -> None:
         """
         Shortcut to connect() -> execute() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
-            *args (tuple[SqlValue]): Arguments to the execution
+            *args (tuple[SqlValue, ...]): Arguments to the execution
         """
-        return self._execute(query, *args, method="execute")
+        return self._execute(query, args, method="execute")
     
     
-    def executemany(self, query : str, *args) -> None:
+    def executemany(self, query : str, args : Sequence[SqlRow]) -> None:
         """
         Shortcut to connect() -> executemany() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
-            *args (list[tuple[SqlValue]]): Arguments to the execution
+            *args (list[tuple[SqlValue, ...]]): Arguments to the execution
         """
-        return self._execute(query, *args, method="executemany")
+        return self._execute(query, args, method="executemany")
     
     
     def create_table(self) -> None:
@@ -271,45 +316,57 @@ class SqlTableMixin:
         self.execute(sql.drop_table(self.tablename))
 
 
-    def fetchone(self, query : str) -> SqlRow:
+    def fetchone(self, query : str, *args : SqlValue) -> SqlRow:
         """
         Fetch first row based on `query`
 
         Args:
             query (str): SQL query
+            *args (tuple[SqlValue, ...]): Arguments to the execution
 
         Returns:
-            out (SqlRow): Single row
+            row (SqlRow): Single row
         """
-        return self._fetch(query, "fetchone")
+        return self._fetch(query, args, method="fetchone")
     
 
-    def fetchmany(self, query : str, size : int = 1) -> list[SqlRow]:
+    def fetchmany(self, query : str, *args : SqlValue, size : int = 1) -> list[SqlRow]:
         """
         Fetch first `size` rows based on `query`
 
         Args:
             query (str): SQL query
+            *args (tuple[SqlValue, ...]): Arguments to the execution
             size (str): Number of rows to return
 
         Returns:
-            out (list[SqlRow]): list of `size` rows
+            rows (list[SqlRow]): list of `size` rows
         """
-        return self._fetch(query, "fetchmany", size)
+        logger.debug(f"{self.tablename}: {query} {args}")
+
+        if self.in_transaction():
+            self._trans_cursor.execute(query, args)
+            return self._trans_cursor.fetchmany(size)
+
+        with self.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, args)
+            return cursor.fetchmany(size)
     
 
-    def fetchall(self, query : str) -> list[SqlRow]:
+    def fetchall(self, query : str, *args : SqlValue) -> list[SqlRow]:
         """
         Fetch all rows based on `query`
 
         Args:
             query (str): SQL query
+            *args (tuple[SqlValue, ...]): Arguments to the execution
 
         Returns:
-            out (list[SqlRow]): list of rows
+            rows (list[SqlRow]): list of rows
         """
-        return self._fetch(query, "fetchall")
-    
+        return self._fetch(query, args, method="fetchall")
+
     
     def insert(self, *args, **kwargs) -> None:
         """ 
@@ -326,7 +383,7 @@ class SqlTableMixin:
             >>> table.insert(0, "Daniel", 27)
         """
         query = sql.insert_row(self.tablename, self.columns)
-        self.execute(query, args)
+        self.execute(query, *args)
 
     
     def upsert(self, *args, **kwargs) -> None:
@@ -346,29 +403,9 @@ class SqlTableMixin:
             >>> table.upsert(0, "Daniel", 21)
         """
         query = sql.upsert(self.tablename, self.columns, self.primary)
-        self.execute(query, args)
+        self.execute(query, *args)
 
     
-    def update(self, where_clause : str, set_values : dict[str, SqlValue]) -> None:
-        """
-        Update columns based on `where_clause` 
-    
-        Args:
-            where_clause (str): describes search filter with SQL condition query
-            set_values (dict[str, SqlValue]): dict where keys are column names and
-                values are corresponding new values to set
-
-        Example:
-            >>> # This will set "unemployed" as `Occupation` and 0.0 as `Salary`
-            >>> # for all the salespeople and CEO
-            >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Occupation", "IN", ["seller", "CEO"])
-            >>> table.update(where, {"Occupation" : "unemployed", "Salary" : 0.0})
-        """
-        query = sql.update(self.tablename, where_clause, set_values)
-        self.execute(query)
-
-
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
         """
         Bulk insert multiple rows
@@ -379,127 +416,11 @@ class SqlTableMixin:
         """
         query = sql.insert_row(self.tablename, self.columns)
         return self.executemany(query, rows)
-    
-    
-    def delete_rows(self, where_clause : str) -> None:
-        """ delete all rows based on `where_clause` filter """
-        query = sql.delete_rows(self.tablename, where_clause)
-        return self.execute(query)
 
-    
-    def delete_eq(self, column : str, equals : SqlValue | Sequence[SqlValue]) -> None:
-        """ Delete row, where `column` values are equal to `equals` """
-        where_clause = sql.where_equals(column, equals)
-        return self.delete_rows(where_clause)
-    
-    
-    def select(self, columns : str | list[str] = "*", where_clause : str | None = None, order_by : str | None = None) -> list[SqlRow]:
-        """
-        Fetch all rows of `columns` from the table with optional `where_clause` filter.\n
-        This executes query in form of "SELECT `columns` FROM table WHERE `where_clause`"
-        
-        Args:
-            columns (str | list[str]): columns of which rows to return. If "*" is provided -
-                returns all.
-            where_clause (str): describes search filter with SQL condition query
-            order_by (str | None): ORDER BY column key
-        
-        Returns:
-            out (list[SqlRow]): list of all rows, where values are in order of provided
-                `columns`
-
-        Examples:
-
-            >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Occupation", "IN", ["seller", "worker"])
-            >>> table.select(["ID", "Name"], where)
-            >>> table.select("*", "ID = 0")
-        """
-        query = sql.select(self.tablename, columns, where_clause, order_by)
-        return self.fetchall(query)
-    
-
-    def select_eq(
-            self, 
-            column         : str,
-            equals         : SqlValue | Sequence[SqlValue],
-            return_columns : str | list[str] = "*",
-            order_by       : str | None      = None
-        ) -> list[SqlRow]: 
-        """ 
-        Returns rows or `return_columns` of rows where `column` value is equal to `equals`.
-        Interface/shortcut for `select` method. This executes query in form of
-        "SELECT `return_columns` FROM table WHERE `column` [ = | IN ] `equals`"
-        
-        Args:
-            column (str): column which rows to compare to `equals`.
-            equals (SqlValue | list[SqlValue]): values to search for in `column`.
-            return_columns (str | list[str]): rows of which columns to return. If "*" is provided -
-                returns all.
-            order_by (str | None): ORDER BY column key
-        
-        Returns:
-            out (list[SqlRow]): list of all rows, where values are in order of provided
-                `return_columns`
-
-        Examples:
-
-            >>> table.select_eq("Occupation", ["seller", "worker"], ["ID", "Name"])
-            >>> table.select_eq("ID", 0, "*")
-        """
-        where_clause = sql.where_equals(column, equals)
-        return self.select(return_columns, where_clause, order_by)
-    
-
-    def max_value(self, column : str, where_clause : str | None = None) -> SqlValue:
-        query = sql.max_value(self.tablename, column, where_clause)
-        return self.fetchone(query)[0]
-    
-    
-    def min_value(self, column : str, where_clause : str | None = None) -> SqlValue:
-        query = sql.min_value(self.tablename, column, where_clause)
-        return self.fetchone(query)[0]
-    
 
     def head(self, n : int = 5) -> list[SqlRow]:
         """ Returns first `n` rows unordered """
-        query = sql.select(self.tablename)
-        return self.fetchmany(query, n)
-    
-
-    def row_id(self, column : str) -> int:
-        """ Returns id of given column name. Usefull to get value index of the row. """
-        if column not in self.columns:
-            raise ValueError(f"No column `{column}` in columns. Available: {[self.columns]}")
-        return self.columns.index(column)
-    
-
-    def fetchall_iterator(self, query: str, batch_size: int) -> Generator[list[SqlRow], None, None]:
-        """
-        Yields all rows in batches, each batch in its own transaction.
-        
-        Args:
-            query (str): SQL query
-            batch_size (int): Size of each batch
-
-        Examples:
-
-            >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Age" ">" 30)
-            >>> query = sql.select(table.tablename, where)
-            >>> with table.transaction():
-            >>>     for batch in table.fetchall_iterator(query, 1000):
-            >>>         process_batch(batch)
-        """
-        if not self.in_transaction():
-            raise RuntimeError("To use the `fetchall_iterator()` method you have \
-                    to keep open the transaction with `transaction()` manager")
-
-        iter_cursor = self._trans.cursor()
-        iter_cursor.execute(query)
-
-        while batch := iter_cursor.fetchmany(batch_size):
-            yield batch
+        return self.select.limit(n).fetchall()
     
 
     def __repr__(self) -> str:
@@ -513,51 +434,59 @@ class SqlTableMixin:
         )
     
 
-    def __len__(self) -> int:
-        length = self.fetchone(sql.count(self.tablename))[0]
-        if not isinstance(length, int):
-            return 0
-        return length
+    def _repr_html_(self):
+
+        if self.database == ":memory:":
+            return None
+        
+        return repr_html(self.tablename, self.columns, self.head(11), 10)
     
 
-    def __iter__(self) -> Generator[SqlRow, None, None]:
-        """ Database rows iterator """
+    def __len__(self) -> int:
         
-        if not self.in_transaction():
-            raise RuntimeError("To use the __iter__ method you have \
-                to keep open the transaction with `transaction()` manager")
+        length = self.select.aggregate("COUNT").fetchone()[0]
         
-        iter_cursor = self._trans.cursor()
-        iter_cursor.execute(sql.select(self.tablename))
-
-        while row := iter_cursor.fetchone(): 
-            yield row
+        if not isinstance(length, int):
+            raise ValueError("Unreachable")
+        return length
 
     
     @overload
-    def __getitem__(self, key : SqlValue | list[Any]) -> SqlRow: ...
+    def __getitem__(self, key : tuple[SqlValue, ...] | SqlValue) -> SqlRow: ...
     @overload
     def __getitem__(self, key : slice) -> list[SqlRow]: ...
     
-    def __getitem__(self, key : SqlValue | list[Any] | slice) -> SqlRow | list[SqlRow]:
+    def __getitem__(self, key : tuple[SqlValue, ...] | SqlValue | slice ) -> SqlRow | list[SqlRow]:
         """ Get row by primary key """
 
         if len(self.primary) > 1:
-            if not (isinstance(key, list) and len(key) == len(self.primary)):
-                raise IndexError("Key expected to be list of equal lenght to `primary`")
-            where = " AND ".join([sql.where_equals(col, val) for col, val in zip(self.primary, key)])
-            query = sql.select(self.tablename, where_clause=where)
-            return self.fetchone(query)
-        
-        if isinstance(key, list):
-            raise IndexError("Key expected to be a single value of primary column")
+            if (not isinstance(key, tuple)) or (not len(key) == len(self.primary)):
+                raise IndexError("`key` expected to be a tuple of equal leght to `primary` for multi index tables")
+            
+        select = self.select
 
         if isinstance(key, slice):
-            logger.debug(f"Got slice: {key}")
             
-            start = key.start or self.min_value(self.primary[0])
-            stop  = key.stop  or self.max_value(self.primary[0])
-            step  = key.step  or 1
+            logger.debug(f"Got slice: {key}")
+
+            primary = self.primary[0]
+
+            if key.start is None:
+                start = select(primary).aggregate('MIN').fetchone()[0] or 0
+                select.reset()
+            else:
+                start = key.start
+
+            if key.stop is None:
+                stop = select(primary).aggregate('MAX').fetchone()[0] or 0
+                select.reset()
+            else:
+                stop = key.stop
+
+            if key.step is None:
+                step = 1
+            else:
+                step = key.step
 
             logger.debug(f"Transformed: {start}, {stop}, {step}")
 
@@ -565,18 +494,44 @@ class SqlTableMixin:
                 raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
 
             if abs(step) == 1:
-                where = f"{self.primary[0]} BETWEEN {min(start, stop)} AND {max(start, stop)}"
-                query = sql.select(self.tablename, where_clause=where, order_by=self.primary[0])
-                rows  = self.fetchall(query)
-                return rows if step > 0 else list(reversed(rows))
+                _start = min(start, stop)
+                _stop  = max(start, stop)
+                
+                select.order_by(primary, step > 0).where.between(primary, _start, _stop)
+                return select.fetchall()
             
-
             ids = [i for i in range(start, stop, step)]
-            rows = self.select_eq(self.primary[0], ids, order_by=self.primary[0])
-            
-            return rows if step >= 0 else list(reversed(rows))
+  
+            select.order_by(primary, step > 0).where.in_(primary, ids)
+            return select.fetchall()
         
-        return self.select_eq(self.primary[0], key)[0]
+        
+        if isinstance(key, tuple):
+
+            for col, val in zip(self.primary, key):
+                select.where.eq(col, val)
+            return select.fetchone()
+
+        select.where.eq(self.primary[0], key)
+        return select.fetchone()
+    
+
+    @property
+    def update(self) -> Update:
+        """ UPDATE statement builder and executor """
+        return Update(self)
+
+    
+    @property
+    def delete(self) -> Delete:
+        """ DELETE statement builder and executor """
+        return Delete(self)
+    
+
+    @property
+    def select(self) -> Select:
+        """ SELECT statement builder and fetcher """
+        return Select(self)
 
 
     @property
@@ -641,4 +596,3 @@ class SqlTableMixin:
             "types"    : self.__types__,
             "primary"  : self.__primary__
         })
- 

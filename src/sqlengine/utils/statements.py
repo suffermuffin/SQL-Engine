@@ -12,7 +12,7 @@ from .html_repr import repr_html
 
 
 class Where[T : Statement]:
-
+    """ Where clause build helper """
     def __init__(self, statement : T):
         
         self._statement = statement
@@ -22,6 +22,7 @@ class Where[T : Statement]:
 
     @property
     def then(self) -> T:
+        """ Returns upper statement object """
         return self._statement
     
     def op(self, column : str, value : SqlValue, operator : str) -> Self:
@@ -30,6 +31,7 @@ class Where[T : Statement]:
         return self
 
     def join(self, lop : str = "AND") -> Self:
+        """ Joins previous expression via logical operator `lop` """
         joined = f" {lop} ".join(self.clause)
         self.clause = [f"({joined})"]
         return self
@@ -66,6 +68,7 @@ class Where[T : Statement]:
         return self
     
     def custom(self, where_clause : str, *args : SqlValue) -> Self:
+        """ Add custom where clause (e.g. `where.custom("Age > ? AND Age != ?", 10, 25)`) """
         self.clause.append(where_clause)
         self.args.extend(args)
         return self
@@ -95,6 +98,9 @@ class Where[T : Statement]:
 
 
 class Statement(ABC):
+    """
+    Statement object that helps you build queries and execute them
+    """
 
     __command__ : Literal["SELECT", "INSERT", "UPDATE", "DELETE"]
 
@@ -108,12 +114,14 @@ class Statement(ABC):
     
     
     def custom_query(self, query : str, *args):
+        """ Completely custom query that completely replaces builder's expression """
         self._custom_query = query
         self._custom_args  = args
         return None
     
 
     def build(self) -> tuple[str, tuple[SqlValue, ...]]:
+        """ Build complete expression with sorted arguments and operations """
         if self._custom_query:
             return self._custom_query, self._custom_args
         
@@ -123,6 +131,7 @@ class Statement(ABC):
     
 
     def reset(self):
+        """ Resets statement to reuse object """
         self._where.reset()
         self._custom_query = None
         self._custom_args = ()
@@ -141,6 +150,7 @@ class Statement(ABC):
 
     @property
     def where(self):
+        """ Where clause builder """
         if self.__command__ == "INSERT":
             raise AttributeError("INSERT statement does not have where clause")
         return self._where

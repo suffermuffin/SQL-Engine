@@ -1,60 +1,61 @@
-# Contents
+- [1. Sql-Engine](#1-sql-engine)
+  - [1.1. Features](#11-features)
+  - [1.2. Purpose](#12-purpose)
+  - [1.3. Installation](#13-installation)
+  - [1.4. Env](#14-env)
+- [2. Usage](#2-usage)
+- [3. Table Declaration](#3-table-declaration)
+  - [3.1. Class Declaration](#31-class-declaration)
+  - [3.2. Schema Declaration](#32-schema-declaration)
+- [4. Table Instantiation](#4-table-instantiation)
+- [5. Custom Types](#5-custom-types)
+- [6. Transactions](#6-transactions)
+  - [6.1. Transaction per Table](#61-transaction-per-table)
+  - [6.2. Shared Connection](#62-shared-connection)
+- [7. Syntax sugar](#7-syntax-sugar)
+  - [7.1. Single Index](#71-single-index)
+  - [7.2. Multi Index](#72-multi-index)
+  - [7.3. Lenght And Shape](#73-lenght-and-shape)
+- [8. More examples](#8-more-examples)
+  - [8.1. Instantiate](#81-instantiate)
+  - [8.2. Insert single row](#82-insert-single-row)
+  - [8.3. Insert many rows](#83-insert-many-rows)
+  - [8.4. Insert many rows in transaction](#84-insert-many-rows-in-transaction)
+  - [8.5. Query select with specified columns](#85-query-select-with-specified-columns)
+  - [8.6. Query select with multiple where clauses](#86-query-select-with-multiple-where-clauses)
+  - [8.7. Select, compare, order and limit](#87-select-compare-order-and-limit)
+  - [8.8. Aggregate](#88-aggregate)
+  - [8.9. Delete rows](#89-delete-rows)
+  - [8.10. Select all](#810-select-all)
+  - [8.11. Create transaction rows batch generator](#811-create-transaction-rows-batch-generator)
 
-- [Sql-Engine](#sql-engine)
-  - [Features](#features)
-  - [Purpose](#purpose)
-  - [Installation](#installation)
-  - [Env](#env)
-  - [Usage](#usage)
-- [Docs](#docs)
-  - [Table Declaration](#table-declaration)
-    - [Class Declaration](#class-declaration)
-    - [Schema Declaration](#schema-declaration)
-  - [Table Instantiation](#table-instantiation)
-  - [Custom Types](#custom-types)
-  - [Transactions](#transactions)
-    - [Transaction per Table](#transaction-per-table)
-    - [Shared Connection](#shared-connection)
-  - [Syntax sugar](#syntax-sugar)
-    - [Single Index](#single-index)
-    - [Multi Index](#multi-index)
-  - [More examples](#more-examples)
-    - [Instantiate](#instantiate)
-    - [Insert single row](#insert-single-row)
-    - [Insert many rows](#insert-many-rows)
-    - [Insert many rows in transaction](#insert-many-rows-in-transaction)
-    - [Query select with specified columns](#query-select-with-specified-columns)
-    - [Query select with multiple specified values](#query-select-with-multiple-specified-values)
-    - [Delete rows](#delete-rows)
-    - [Select all](#select-all)
-    - [Create transaction rows batch generator](#create-transaction-rows-batch-generator)
 
-
-# Sql-Engine
+# 1. Sql-Engine
 
 My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies **(vibe-code free!)**
 
 
-## Features
+## 1.1. Features
 
-Abstracts SQL queries into tiny little methods like `select`, `insert`, `delete_rows`, `update`, `upsert`, etc. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `fetchall_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
-
-
-## Purpose
-
-It's a tiny little modern project that lets you prototype your databases locally with great flexibility. Also, it can be used in small production apps like chat bots to store data, but **beware! Security might be flawed, proof query execution beforehand.** In other cases, sure, use it as you like.
+Abstracts SQL queries into tiny little methods like, `insert`, `insert_many`, `upsert`, and not so little and tiny query builders a-la `select`, `delete`, `update`, etc. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `select.fetchmany_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
 
 
-## Installation
+## 1.2. Purpose
+
+It's a tiny little modern project that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps like chat bots to store data, because all select, update, delete queries are parametrized.
+
+
+## 1.3. Installation
 
 To install `sqlengine`, you can use `pip`:
 
 ```sh
 git clone --depth 1 https://github.com/suffermuffin/SQL-Engine.git
+cd SQL-Engine
 pip install -e .
 ```
 
-## Env
+## 1.4. Env
 
 You may set environment variable for logging. By default it's `WARNING`.
 
@@ -62,7 +63,7 @@ You may set environment variable for logging. By default it's `WARNING`.
 SQL_ENGINE_LOG_LEVEL=INFO
 ```
 
-## Usage
+# 2. Usage
 
 All you have to do to create your own cute little table is to [inherit](#class-declaration) `SqlTableMixin` class or to create your own [schema](#schema-declaration) and declare desired properties of your table's columns. They are:
 
@@ -87,16 +88,13 @@ List of primary keys
 __primary__ :list[str] 
 ```
 
-# Docs
 
-Here are some examples in code.
-
-## Table Declaration
+# 3. Table Declaration
 
 There are couple of ways to declare your table.
 
 
-### Class Declaration
+## 3.1. Class Declaration
 
 One way is to use inheritance from `SqlTableMixin` with sql-native types declaration:
 
@@ -124,7 +122,7 @@ class EmployeesA(SqlTableMixin):
 
 ```
 
-### Schema Declaration
+## 3.2. Schema Declaration
 
 The other one is to use schemas:
 
@@ -139,7 +137,7 @@ employees_schema : Schema = {
 }
 ```
 
-## Table Instantiation
+# 4. Table Instantiation
 
 You may instantiate a table via your class or schema. You have to provide a path to the database where the data exists or you wish to create a new table/database. You can also use `:memory:` to complete operations [in memory](https://sqlite.org/inmemorydb.html). You may operate on `:memory:` databases only in [transactions](#transactions) because they don't commit to a file.
 
@@ -177,7 +175,7 @@ print(album)
 # -> Album(database=temp/chinook.db, tablename=Album, columns=(AlbumId, Title, ArtistId), types=(INTEGER, NVARCHAR(160), INTEGER), primary=(AlbumId))
 ```
 
-## Custom Types
+# 5. Custom Types
 
 You can define non-native sqlite datatypes. They have to implement `to_sql` and `from_sql`. Or there are other ways that `sqlite3` [documentation](https://docs.python.org/3/library/sqlite3.html#how-to-adapt-custom-python-types-to-sqlite-values) explains.
 
@@ -189,18 +187,12 @@ class Point:
         self.y = y
 
     def to_sql(self) -> str:
-        """ 
-        Method that converts object implementation
-        to native sqlite3 value 
-        """
+        """ Method that converts object instance to native sqlite3 value """
         return f"{self.x}, {self.y}"
     
     @classmethod
     def from_sql(cls, sql : bytes):
-        """ 
-        Method that accepts bytes 
-        and returns own object implementation
-        """
+        """ Method that accepts bytes and returns object instance """
         x, y = list(map(float, sql.split(b",")))
         return cls(x, y)
     
@@ -228,16 +220,16 @@ Should work just right
 table = Coordinates("temp/data.db")
 
 table.upsert(0, "Kazahstan", Point(43.2380, 76.8829), 14)
-row = table.select_eq("ID", 0)[0]
+point = table.select("coords").where.eq("ID", 0).then.fetchone()[0]
 
-isinstance(row[2], Point) # -> True
+isinstance(point, Point) # -> True
 ```
 
-## Transactions
+# 6. Transactions
 
 Transactions help you to not spam `execute()` -> `commit()` on a database for each of operations which is computationally heavy.
 
-### Transaction per Table
+## 6.1. Transaction per Table
 
 ```py
 class Homies(SqlTableMixin):
@@ -255,22 +247,19 @@ data = [
 ]
 ```
 
-Transactions must be called with `with` statement. They allow to use `__iter__` and `fetchall_iterator` methods that otherwise are not available.
+Transactions must be called with `with` statement. They allow to use `select.__iter__` and `select.fetchmany_iterator` methods that otherwise are not available.
 
 ```py
-from sqlengine import sqlgen as sql
-
 with table.transaction():
     
     table.create_table()
     table.insert_many(data)
     
-    for idx, name, age in table:
-        where = sql.where_equals("ID", idx)
+    for idx, name, age in table.select:
         assert(isinstance(age, int)) # typing is lacking in returning rows
-        table.update(where, {"Age" : age + 1})
+        table.update.where.eq("ID", idx).then.set("Age", age + 1).execute()
     
-    older_homies = table.select()
+    older_homies = table.select.fetchall()
 
 older_homies
 
@@ -282,7 +271,7 @@ older_homies
 # ]
 ```
 
-### Shared Connection
+## 6.2. Shared Connection
 
 To use multiple databases and tables in the same transaction (spanning multiple databases), you can use `shared_connection` util.
 
@@ -305,32 +294,18 @@ copy_biggest_table = schema.table_from_schema(":memory:", biggest_table.schema)
 
 with shared_connection(copy_biggest_table, biggest_table, **biggest_table.connection_params):
     copy_biggest_table.create_table()
-    query = sql.select('Track')
     
-    for batch in biggest_table.fetchall_iterator(query, 1000):
+    for batch in biggest_table.select.fetchmany_iterator(1000):
         copy_biggest_table.insert_many(batch)
 
     final_shape = copy_biggest_table.shape
 
-final_shape
+final_shape # -> (9, 3503)
 ```
 
-```sql
--- Debug output --
-Track: Using in-memory database
-Starting shared transaction across 2 databases
-Track: CREATE TABLE IF NOT EXISTS Track (TrackId INTEGER, Name NVARCHAR(200), AlbumId INTEGER, MediaTypeId INTEGER, GenreId INTEGER, Composer NVARCHAR(220), Milliseconds INTEGER, Bytes INTEGER, UnitPrice NUMERIC(10,2), PRIMARY KEY (TrackId)); 
-Track: INSERT INTO Track (TrackId, Name, AlbumId, MediaTypeId, GenreId, Composer, Milliseconds, Bytes, UnitPrice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?); [(...), ...]
-Track: INSERT INTO Track (TrackId, Name, AlbumId, MediaTypeId, GenreId, Composer, Milliseconds, Bytes, UnitPrice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?); [(...), ...]
-Track: INSERT INTO Track (TrackId, Name, AlbumId, MediaTypeId, GenreId, Composer, Milliseconds, Bytes, UnitPrice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?); [(...), ...]
-Track: INSERT INTO Track (TrackId, Name, AlbumId, MediaTypeId, GenreId, Composer, Milliseconds, Bytes, UnitPrice) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?); [(...), ...]
-Track: SELECT COUNT(*) FROM Track;
-Shared transaction finished
-```
+# 7. Syntax sugar
 
-## Syntax sugar
-
-### Single Index
+## 7.1. Single Index
 
 `SqlTableMixin` has `__getitem__` implementation. Usage differs based on `__primary__`. Best case is a single `INTEGER` column:
 
@@ -360,7 +335,7 @@ table[4] # -> (4, 'loc4', Point(4.0, 4.0), 4.4)
 
 ```sql
 -- Debug output --
-Coordinates: SELECT * FROM Coordinates WHERE ID = 4;
+Coordinates: SELECT * FROM Coordinates WHERE ID = ?; (4,);
 ```
 
 You can even slice your cute little table
@@ -378,10 +353,10 @@ table[:4:-1]
 
 ```sql
 -- Debug output --
-Coordinates: SELECT * FROM Coordinates WHERE ID BETWEEN 0 AND 4 ORDER BY ID;
+Coordinates: SELECT * FROM Coordinates WHERE ID BETWEEN ? AND ? ORDER BY ID DESC; (0, 4)
 ```
 
-### Multi Index
+## 7.2. Multi Index
 
 In case of multiple values in `__primary__` you have to call with list key in order of declared `__primary__`:
 
@@ -409,13 +384,15 @@ table.insert_many(employees_data)
 ```
 
 ```py
-table[[3, "test3"]] # -> (3, 'test3', 'surname3', 133.3, 'pos3')
+table[3, "test3"] # -> (3, 'test3', 'surname3', 133.3, 'pos3')
 ```
 
 ```sql
 -- Debug output --
-Employees: SELECT * FROM Employees WHERE ID = 3 AND name = "test3";
+Employees: SELECT * FROM Employees WHERE ID = ? AND name = ?; (3, 'test3')
 ```
+
+## 7.3. Lenght And Shape
 
 You can get number of rows in your table with `len`:
 
@@ -428,8 +405,14 @@ len(table) # -> 7
 Employees: SELECT COUNT(*) FROM Employees;
 ```
 
+Or shape (n_cols, n_rows a.k.a `x, y`)
 
-## More examples
+```py
+table.shape # -> (5, 7)
+```
+
+
+# 8. More examples
 
 **and under the hood queries**
 
@@ -451,7 +434,7 @@ class Employees(SqlTableMixin):
 ```
 
 ---
-### Instantiate
+## 8.1. Instantiate
 
 ```py
 # Force table overwrite with `force_drop=True`
@@ -460,12 +443,12 @@ table = Employees("MyBusiness.db", force_drop=True)
 
 ```sql
 -- Debug output --
-Employees: DROP TABLE IF EXISTS Employees 
-Employees: CREATE TABLE IF NOT EXISTS Employees (ID INT, Name TEXT NOT NULL, Occupation TEXT, PRIMARY KEY (ID));
+EmployeesDB: DROP TABLE IF EXISTS EmployeesDB 
+EmployeesDB: CREATE TABLE IF NOT EXISTS EmployeesDB (ID INT, Name TEXT NOT NULL, Occupation TEXT, PRIMARY KEY (ID));
 ```
 
 ---
-### Insert single row
+## 8.2. Insert single row
 
 ```py
 table.insert(0, 'John', 'CEO')
@@ -473,11 +456,11 @@ table.insert(0, 'John', 'CEO')
 
 ```sql
 -- Debug output --
-Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); (0, 'John', 'CEO')
+EmployeesDB: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); (0, 'John', 'CEO')
 ```
 
 ---
-### Insert many rows
+## 8.3. Insert many rows
 
 ```py
 workers  = [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
@@ -486,11 +469,11 @@ table.insert_many(workers)
 
 ```sql
 -- Debug output --
-Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
+EmployeesDB: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
 ```
 
 ---
-### Insert many rows in transaction
+## 8.4. Insert many rows in transaction
 
 ```py
 batch_size = 2
@@ -508,32 +491,32 @@ with table.transaction():
 
 ```sql
 -- Debug output --
-Employees: Transaction started
-Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); [(4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
-Employees: INSERT INTO Employees (ID, Name, Occupation) VALUES (?, ?, ?); [(6, 'Max', 'seller'), (7, 'Maria', 'seller')]
-Employees: Transaction finished
+EmployeesDB: Transaction started
+EmployeesDB: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(4, 'Angela', 'seller'), (5, 'Mark', 'seller')]
+EmployeesDB: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(6, 'Max', 'seller'), (7, 'Maria', 'seller')]
+EmployeesDB: Transaction finished
 ```
 
 ---
-### Query select with specified columns
+## 8.5. Query select with specified columns
 
 ```py
-table.select_eq('Occupation', 'CEO', return_columns=['Name', 'ID'])
+table.select('Name', 'ID').where.eq('Occupation', 'CEO').then.fetchone()
 
 # Returns
-[('John', 0)]
+('John', 0)
 ```
 
 ```sql
 -- Debug output --
-Employees: SELECT Name, ID FROM Employees WHERE Occupation = "CEO";
+EmployeesDB: SELECT Name, ID FROM EmployeesDB WHERE Occupation = ?; ('CEO',)
 ```
 
 ---
-### Query select with multiple specified values
+## 8.6. Query select with multiple where clauses
 
 ```py
-table.select_eq('Occupation', equals=['worker', 'CEO'])
+table.select.where.eq('Occupation', 'worker').eq('Occupation', 'CEO').join("OR").then.fetchall()
 
 # Returns
 [(0, 'John', 'CEO'),
@@ -544,26 +527,60 @@ table.select_eq('Occupation', equals=['worker', 'CEO'])
 
 ```sql
 -- Debug output --
-Employees: SELECT * FROM Employees WHERE Occupation in ("worker", "CEO");
+EmployeesDB: SELECT * FROM EmployeesDB WHERE (Occupation = ? OR Occupation = ?); ('worker', 'CEO')
+
 ```
-
 ---
-### Delete rows
 
+## 8.7. Select, compare, order and limit
 ```py
-table.delete_eq('ID', 1)
+table.select.where.in_('Occupation', ('seller', 'worker')).then.order_by("ID", ascending=False).limit(5).fetchall()
+
+# Returns
+[(7, 'Maria', 'seller'),
+ (6, 'Max', 'seller'),
+ (5, 'Mark', 'seller'),
+ (4, 'Angela', 'seller'),
+ (3, 'Kate', 'worker')]
 ```
 
 ```sql
 -- Debug output --
-Employees: DELETE FROM Employees WHERE ID = 1; 
+EmployeesDB: SELECT * FROM EmployeesDB WHERE Occupation IN (?, ?) ORDER BY ID DESC LIMIT ?; ('seller', 'worker', 5)
 ```
 
 ---
-### Select all
+
+## 8.8. Aggregate
 
 ```py
-table.select()
+table.select.where.eq("Occupation", "worker").then.aggregate("COUNT").fetchone()
+
+# -> (3,)
+```
+
+```sql
+-- Debug output --
+EmployeesDB: SELECT COUNT(*) FROM EmployeesDB WHERE Occupation = ?; ('worker',)
+```
+
+---
+## 8.9. Delete rows
+
+```py
+table.delete.where.eq('ID', 1).then.execute()
+```
+
+```sql
+-- Debug output --
+EmployeesDB: DELETE FROM EmployeesDB WHERE ID = ?; (1,)
+```
+
+---
+## 8.10. Select all
+
+```py
+table.select.fetchall()
 
 # Returns
 [(0, 'John', 'CEO'),
@@ -577,21 +594,19 @@ table.select()
 
 ```sql
 -- Debug output --
-Employees: SELECT * FROM Employees;
+EmployeesDB: SELECT * FROM EmployeesDB; ()
 ```
 ---
-### Create transaction rows batch generator
+## 8.11. Create transaction rows batch generator
 
 ```py
 import logging
-from sqlengine import sqlgen as sql
 
 logger = logging.getLogger(__name__)
 
 with table.transaction():
     
-    query = sql.select(table.tablename, columns=['Name', 'ID'])
-    batches = table.fetchall_iterator(query, batch_size=2)
+    batches = table.select('Name', 'ID').fetchmany_iterator(batch_size=2)
     
     for i, batch in enumerate(batches):
         logger.debug(f"batch {i}: {batch}")
@@ -599,10 +614,10 @@ with table.transaction():
 
 ```sql
 -- Debug output --
-Employees: Transaction started
+EmployeesDB: Transaction started
 batch 0: [('John', 0), ('George', 2)]
 batch 1: [('Kate', 3), ('Angela', 4)]
 batch 2: [('Mark', 5), ('Max', 6)]
 batch 3: [('Maria', 7)]
-Employees: Transaction finished
+EmployeesDB: Transaction finished
 ```

@@ -25,13 +25,9 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
 
         >>> from sqlengine.utils import shared_connection
         >>> with shared_connection(table1, table2, **table1.connection_params):
-        >>>     for row1, row2 in zip(table1, table2):
-        >>>         id1  = row1[table1.row_id("ID")]
-        >>>         temp = row2[table1.row_id("temp")]
-        >>>         id2  = row2[table2.row_id("ID")]
+        >>>     for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
         >>>         if id1 == id2:
-        >>>             where = sql.where_equals("ID", id2)
-        >>>             table_e.update(where, {"salary" : temp})
+        >>>             table.update.where.eq("ID", id2).then.set("Salary", temp).execute()
     """
 
     tables_in_trans = [(f"{table.__class__.__name__=}, {table.tablename=}, {table.database=}") for table in args if table.in_transaction()]

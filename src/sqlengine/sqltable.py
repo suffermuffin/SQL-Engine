@@ -3,7 +3,7 @@ import os
 import sqlite3
 
 from contextlib import contextmanager
-from typing     import Sequence, Literal, Generator, overload
+from typing     import Sequence, Literal, overload
 
 from .utils            import sqlgen as sql
 from .utils.statements import Select, Update, Delete
@@ -279,7 +279,7 @@ class SqlTableMixin:
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
-            *args (tuple[SqlValue]): Arguments to the execution
+            *args (tuple[SqlValue, ...]): Arguments to the execution
         """
         return self._execute(query, args, method="execute")
     
@@ -291,7 +291,7 @@ class SqlTableMixin:
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
-            *args (list[tuple[SqlValue]]): Arguments to the execution
+            *args (list[tuple[SqlValue, ...]]): Arguments to the execution
         """
         return self._execute(query, args, method="executemany")
     
@@ -322,9 +322,10 @@ class SqlTableMixin:
 
         Args:
             query (str): SQL query
+            *args (tuple[SqlValue, ...]): Arguments to the execution
 
         Returns:
-            out (SqlRow): Single row
+            row (SqlRow): Single row
         """
         return self._fetch(query, args, method="fetchone")
     
@@ -335,10 +336,11 @@ class SqlTableMixin:
 
         Args:
             query (str): SQL query
+            *args (tuple[SqlValue, ...]): Arguments to the execution
             size (str): Number of rows to return
 
         Returns:
-            out (list[SqlRow]): list of `size` rows
+            rows (list[SqlRow]): list of `size` rows
         """
         logger.debug(f"{self.tablename}: {query} {args}")
 
@@ -358,9 +360,10 @@ class SqlTableMixin:
 
         Args:
             query (str): SQL query
+            *args (tuple[SqlValue, ...]): Arguments to the execution
 
         Returns:
-            out (list[SqlRow]): list of rows
+            rows (list[SqlRow]): list of rows
         """
         return self._fetch(query, args, method="fetchall")
 

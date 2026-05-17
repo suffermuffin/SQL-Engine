@@ -1,10 +1,10 @@
 from typing import Sequence, Sequence
 
 
-def format_list(items : Sequence | set, brakets : bool = True) -> str:
+def format_list(items : Sequence | set, brackets : bool = True) -> str:
     """ Formats list into `(item1, item2, ...)` format """
     items_str = ', '.join([str(i) for i in items])
-    if not brakets: 
+    if not brackets: 
         return items_str
     return f'({items_str})'
 

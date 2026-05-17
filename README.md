@@ -28,11 +28,11 @@
 - [7. Transactions](#7-transactions)
   - [7.1. Transaction per Table](#71-transaction-per-table)
   - [7.2. Shared Connection](#72-shared-connection)
-- [8. Syntax sugar](#8-syntax-sugar)
+- [8. Syntax Sugar](#8-syntax-sugar)
   - [8.1. Single Index](#81-single-index)
   - [8.2. Multi Index](#82-multi-index)
-  - [8.3. Length And Shape](#83-length-and-shape)
-- [9. More examples](#9-more-examples)
+  - [8.3. Length and Shape](#83-length-and-shape)
+- [9. More Examples](#9-more-examples)
   - [9.1. Instantiate](#91-instantiate)
   - [9.2. Insert single row](#92-insert-single-row)
   - [9.3. Insert many rows](#93-insert-many-rows)
@@ -44,7 +44,7 @@
   - [9.9. Delete rows](#99-delete-rows)
   - [9.10. Select all](#910-select-all)
   - [9.11. Create transaction rows batch generator](#911-create-transaction-rows-batch-generator)
-  - [9.12. 8.12 Iterate over multiple tables](#912-812-iterate-over-multiple-tables)
+  - [9.12. Iterate over multiple tables](#912-iterate-over-multiple-tables)
 
 
 # 1. Sql-Engine
@@ -98,7 +98,7 @@ table.select("InvoiceId", "CustomerId", "BillingAddress", "BillingCountry", "Tot
 
 ## 1.2. Purpose
 
-It's a tiny little modern ORM that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own quiries which might not be paramerized with methods like `select.custom()` and `where.custom()`.
+It's a tiny little modern ORM that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own queries which might not be paramerized with methods like `select.custom()` and `where.custom()`.
 
 And last (but not least) is data inspection. If you need to quickly inspect existing .db file but don't want to install yet another heavy ORM with a lot of unused dependencies, you might look into Sql-Engine, as it uses only native python modules.
 
@@ -143,13 +143,13 @@ __types__ : list[SqlType | str]
 
 List of primary keys
 ```py
-__primary__ :list[str] 
+__primary__ : list[str] 
 ```
 
 
 # 3. Table Declaration
 
-There are couple of ways to declare your table.
+There are a couple of ways to declare your table.
 
 
 ## 3.1. Class Declaration
@@ -235,7 +235,7 @@ print(album)
 
 # 5. Statements
 
-Sql-Engine uses chained statements creation via object mutation. Unlike most other ORMs, Sql-Engine abstracts connection creation for single operations and let's you you use statements to execute queries on the spot.
+Sql-Engine uses chained statements creation via object mutation. Unlike most other ORMs, Sql-Engine abstracts connection creation for single operations and lets you use statements to execute queries on the spot.
 
 ```py
 table = schema.table_from_database("temp/data.db", "Employees")
@@ -270,11 +270,11 @@ DELETE FROM Employees WHERE (ID = ? OR ID = ?); (0, 3)
 
 ## 5.1. Where
 
-Statements have where clause builder. It's a sepatate object that you can access via `statement.where` property. It has basic methods like `eq()`, `gt()`, `lt()`, `neq()` and so on.
+Statements have where clause builder. It's a separate object that you can access via `statement.where` property. It has basic methods like `eq()`, `gt()`, `lt()`, `neq()` and so on.
 
 ### 5.1.1. `join(lop : str)` operator
 
-Where statements join clauses with `AND` logical operator by default, but it can be overwritter by `join()` method as in example above. `join` combines all previous where clauses with provided logical operator and let's you continue the chain. This creates ability to build complex where clauses.
+Where statements join clauses with `AND` logical operator by default, but it can be overwritten by `join()` method as shown in the example above. `join` combines all previous where clauses with provided logical operator and lets you continue the chain. This creates the ability to build complex where clauses.
 
 ```py
 table = schema.table_from_database("temp/chinook.db", "Customer")
@@ -312,7 +312,7 @@ table.select.where.eq("Country", "USA").then.fetchone()
 
 ## 5.2. Select
 
-Select is non mutational statement (i.e. it does not mutate table contents). Syntax is quite simple. In broad terms it can be described as: 
+Select is non-mutational statement (i.e. it does not mutate table contents). Syntax is quite simple. In broad terms it can be described as: 
 
 `select("Column1", "Column2", ...).order_by("Column").limit(n).fetchall()`
 
@@ -330,7 +330,7 @@ table.select("SupportRepId","Email").limit(5)
 
 ### 5.2.2. `order_by(column : str, ascending : bool = True)` op
 
-`oreder_by` will return rows in `ascending` or `descending` order of provided column.
+`order_by` will return rows in `ascending` or `descending` order of provided column.
 
 ```py
 table.select("SupportRepId","Email").order_by("SupportRepId").limit(5)
@@ -341,7 +341,7 @@ table.select("SupportRepId","Email").order_by("SupportRepId").limit(5)
 
 ### 5.2.3. `aggregate(by : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'])` op
 
-`aggregate` *aggregates* by provided method. Side note: `_repr_html_` does not work if `aggregate` was used and will fallback to `__repr__`.
+`aggregate` *aggregates* by provided method. Note: `_repr_html_` does not work if `aggregate` was used and will fallback to `__repr__`.
 
 ```py
 table.select("Email").where.eq("SupportRepId", 3).then.aggregate("COUNT").fetchone() # -> (21,)
@@ -359,7 +359,7 @@ len(table.select("SupportRepId","Email").fetchall())    # -> 59 (len of rows)
 
 ### 5.2.5. `__iter__` methods
 
-There are 2 iter methods: classical `__iter__` that lets you iterate over rows and `fetchmany_iterator(batch_size : int)`. Both of them are available if table is in [transaction](#4-table-instantiation) mode. Otherwise `RuntimeError` will be risen.
+There are 2 iter methods: classical `__iter__` that lets you iterate over rows and `fetchmany_iterator(batch_size : int)`. Both of them are available if table is in [transaction](#4-table-instantiation) mode. Otherwise `RuntimeError` will be raised.
 
 
 ```py
@@ -380,7 +380,7 @@ Update is used to change values inside the table, therefore it is a mutational s
 
 ### 5.3.1. `set(column : str, value : SqlValue)` op
 
-Set's `column` to provided `value`. You can use `where` builder to specify criteria for wich rows this value must be changed.
+Set's `column` to provided `value`. You can use `where` builder to specify criteria for which rows this value must be changed.
 
 ```py
 # This will move all residences of Czech Republic to Karaganda
@@ -389,7 +389,7 @@ table.update.set("City", "Karaganda").where.eq("Country", "Czech Republic").then
 
 ### 5.3.2. `execute()` method
 
-This will build and execute statement
+This will build and execute the statement
 
 ## 5.4. Delete
 
@@ -401,12 +401,12 @@ table.delete.where.eq("ID", 0).then.execute()
 
 ### 5.4.1. `execute()` method
 
-This will (once again) build and execute statement
+This will (once again) build and execute the statement
 
 
 # 6. Custom Types
 
-You can define non-native sqlite datatypes. They have to implement `to_sql` and `from_sql`. Or there are other ways that `sqlite3` [documentation](https://docs.python.org/3/library/sqlite3.html#how-to-adapt-custom-python-types-to-sqlite-values) explains.
+You can define non-native sqlite datatypes. They have to implement `to_sql` and `from_sql`. There are other ways that `sqlite3` [documentation](https://docs.python.org/3/library/sqlite3.html#how-to-adapt-custom-python-types-to-sqlite-values) explains.
 
 
 ```py
@@ -532,11 +532,11 @@ with shared_connection(copy_biggest_table, biggest_table, **biggest_table.connec
 final_shape # -> (9, 3503)
 ```
 
-# 8. Syntax sugar
+# 8. Syntax Sugar
 
 ## 8.1. Single Index
 
-`SqlTableMixin` has `__getitem__` implementation. Usage differs based on `__primary__`. Best case is a single `INTEGER` column:
+`SqlTableMixin` has `__getitem__` implementation. Usage differs based on `__primary__`. The simplest case uses a single `INTEGER` primary key:
 
 ```py
 table = Coordinates("temp/data.db", force_drop=True)
@@ -556,7 +556,7 @@ coords_data = [
 table.insert_many(coords_data)
 ```
 
-You can implicitly call by `ID` column (which is primary in this case):
+You can implicitly retrieve rows by the `ID` column (which is primary in this case):
 
 ```py
 table[4] # -> (4, 'loc4', Point(4.0, 4.0), 4.4)
@@ -587,7 +587,7 @@ Coordinates: SELECT * FROM Coordinates WHERE ID BETWEEN ? AND ? ORDER BY ID DESC
 
 ## 8.2. Multi Index
 
-In case of multiple values in `__primary__` you have to call with list key in order of declared `__primary__`:
+In case of multiple values in `__primary__` you have to call with tuple key in order of declared `__primary__`:
 
 ```py
 class Employees(SqlTableMixin):
@@ -621,7 +621,7 @@ table[3, "test3"] # -> (3, 'test3', 'surname3', 133.3, 'pos3')
 Employees: SELECT * FROM Employees WHERE ID = ? AND name = ?; (3, 'test3')
 ```
 
-## 8.3. Length And Shape
+## 8.3. Length and Shape
 
 You can get number of rows in your table with `len`:
 
@@ -634,14 +634,14 @@ len(table) # -> 7
 Employees: SELECT COUNT(*) FROM Employees;
 ```
 
-Or shape (n_cols, n_rows a.k.a `x, y`)
+Or shape (n_cols, n_rows) in `x, y` fashion.
 
 ```py
 table.shape # -> (5, 7)
 ```
 
 
-# 9. More examples
+# 9. More Examples
 
 **and under the hood queries**
 
@@ -852,7 +852,7 @@ EmployeesDB: Transaction finished
 ```
 ---
 
-## 9.12. 8.12 Iterate over multiple tables
+## 9.12. Iterate over multiple tables
 
 ```py
 

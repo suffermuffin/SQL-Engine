@@ -270,13 +270,13 @@ class Select(Statement):
 
     def _build(self, where_clause : str, *args : SqlValue):
 
-        order   = sql.format_list(self._order_by, brakets=False)
-        columns = sql.format_list(self._columns,  brakets=False)
+        order   = sql.format_list(self._order_by, brackets=False)
+        columns = sql.format_list(self._columns,  brackets=False)
         
         columns = "*" if not columns else columns
         columns = columns if not self._aggregate else f"{self._aggregate}({columns})"
 
-        if self._limit:
+        if self._limit is not None:
             limit = "?"
             args  = (*args, self._limit)
         
@@ -340,7 +340,7 @@ class Update(MutationalStatement):
 
 
     def _build(self, where_clause : str, *args : SqlValue):
-        set_clause = sql.format_list(self._set_clauses, brakets=False)
+        set_clause = sql.format_list(self._set_clauses, brackets=False)
         query = f"UPDATE {self._table.tablename} SET {set_clause} WHERE {where_clause};"
         set_args = self._set_args.copy()
         set_args.extend(args)

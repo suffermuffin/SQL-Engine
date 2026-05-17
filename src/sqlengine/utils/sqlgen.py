@@ -1,5 +1,4 @@
-from typing import Sequence, Literal, Sequence
-from .types import SqlValue
+from typing import Sequence, Sequence
 
 
 def format_list(items : Sequence | set, brakets : bool = True) -> str:
@@ -71,31 +70,6 @@ def delete_rows(tablename : str, where_clause : str) -> str:
     return f"DELETE FROM {tablename} WHERE {where_clause};"
 
 
-def where(
-        column   : str, 
-        operator : Literal["=", "!=", "<", ">", "<=", ">=", "IN"],
-        values   : SqlValue | Sequence[SqlValue], 
-    ) -> str:
-    
-    fmt = lambda x: x if not isinstance(x, str) else f"\"{x}\""
-    
-    if not isinstance(values, (list, tuple)):
-        return f'{column} {operator} {fmt(values)}'
-    
-    val_list = [fmt(val) for val in values]
-
-    return f'{column} {operator} {format_list(val_list)}'
-
-
-def where_equals(column : str, equals : SqlValue | Sequence[SqlValue]) -> str:
-    """ Generates where clause for provided `equals` values to look for equal values in `column` """
-    
-    if not isinstance(equals, (list, tuple)):
-        return where(column, "=", equals)
-    
-    return where(column, "IN", equals)
-
-
 def select(
       tablename   : str,
       columns     : str | list[str]  = "*",
@@ -114,32 +88,6 @@ def select(
     query += ";"
 
     return query
-
-
-def count(tablename : str, columns : str | list[str] = "*", where_clause : str | None = None) -> str:
-    _columns = columns if isinstance(columns, str) else format_list(columns, False)
-    return select(tablename, f"COUNT({_columns})", where_clause)
-
-
-def update(tablename : str, where_clause : str, set_values : dict[str, SqlValue]) -> str:
-    """ 
-    Creates query to update columns based on `where_clause` 
-    
-    Args:
-        tablename (str): name of the table in db
-        where_clause (str): describes search filter with SQL condition query
-        set_values (dict[str, SqlValue]): dict where keys are column names and
-            values are corresponding new values to set
-        
-    """
-    new_sets = [
-        where(column, "=", new_value)
-        for column, new_value in set_values.items()
-    ]
-
-    set_to = format_list(new_sets, False)
-
-    return f"UPDATE {tablename} SET {set_to} WHERE {where_clause};"
 
 
 def upsert(tablename : str, columns : list[str], primary_key : list[str]) -> str:
@@ -165,19 +113,3 @@ def upsert(tablename : str, columns : list[str], primary_key : list[str]) -> str
         f"DO UPDATE SET {updated_str};"
     )
     return query
-
-
-def max_value(tablename : str, column : str, where_clause : str | None = None) -> str:
-    query  = f"SELECT MAX({column}) FROM {tablename}"
-    query += f" WHERE {where_clause}" if where_clause else ""
-    query += ";"
-    return query
-
-
-def min_value(tablename : str, column : str, where_clause : str | None = None) -> str:
-    query  = f"SELECT MIN({column}) FROM {tablename}"
-    query += f" WHERE {where_clause}" if where_clause else ""
-    query += ";"
-    return query
-
-

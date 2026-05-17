@@ -28,6 +28,7 @@
 - [7. Transactions](#7-transactions)
   - [7.1. Transaction per Table](#71-transaction-per-table)
   - [7.2. Shared Connection](#72-shared-connection)
+  - [7.3. Manually Managed Connections](#73-manually-managed-connections)
 - [8. Syntax Sugar](#8-syntax-sugar)
   - [8.1. Single Index](#81-single-index)
   - [8.2. Multi Index](#82-multi-index)
@@ -530,6 +531,47 @@ with shared_connection(copy_biggest_table, biggest_table, **biggest_table.connec
     final_shape = copy_biggest_table.shape
 
 final_shape # -> (9, 3503)
+```
+
+## 7.3. Manually Managed Connections
+
+You can use manually manged connections with below syntax:
+
+```py
+table.open_connection()
+table.insert_many(DATA)
+
+for idx, temp in table.select("ID", "temp"):
+    table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
+
+table.commit()
+table.close_connection()
+```
+
+Note that you have to use `table.commit()` or `table.rollback()` after the operations. And don't forget to `table.close_connection()` if necessary.
+
+It works fine between multiple tables as well as `shared_connection`. Here an example of coping one table to the other while in transaction:
+
+```py
+table_original  = schema.table_from_database(CHINOOK_DB, "Customer")
+schema_         = table_original.schema
+
+table_copy = schema.table_from_schema(":memory:", schema_)
+
+table_original.open_connection()
+table_copy.open_connection()
+
+table_copy.create_table()
+
+for rows in table_original.select.fetchmany_iterator(50):
+    table.insert_many(rows)
+
+table_copy.commit()
+
+table_original.close_connection()
+
+...
+
 ```
 
 # 8. Syntax Sugar

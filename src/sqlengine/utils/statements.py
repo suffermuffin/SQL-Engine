@@ -157,8 +157,8 @@ class Statement(ABC):
     
 
     def __repr__(self) -> str:
-        query, _ = self.build()
-        return f"{self.__command__}: {query}"
+        query, args = self.build()
+        return f"{query} {args}"
     
 
     def __str__(self) -> str:
@@ -191,12 +191,12 @@ class Select(Statement):
         return self
     
     
-    def aggregate(self, agr : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']) -> Self:
+    def aggregate(self, by : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']) -> Self:
         
         if self._aggregate:
             raise ValueError("Can't aggregate columns multiple times")
         
-        self._aggregate = agr
+        self._aggregate = by
         return self
 
     
@@ -253,7 +253,7 @@ class Select(Statement):
 
     
     def __iter__(self) -> Generator[SqlRow, None, None]:
-        """ Database rows iterator """
+        """ Select statement rows iterator """
         
         if not self._table.in_transaction():
             raise RuntimeError("To use the __iter__ method you have \

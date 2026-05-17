@@ -171,17 +171,21 @@ class TestSqlTable(unittest.TestCase):
 
     
     def test_shared_connection(self):
+
+        table_mem = self.coord_table_s
+        table_cor = self.coord_table
+        table_emp = self.empl_table
         
-        with shared_connection(self.coord_table, self.empl_table, self.coord_table_s, **self.coord_table.connection_params):
-            self.coord_table_s.create_table()
+        with shared_connection(table_cor, table_emp, table_mem, **table_cor.connection_params):
+            table_mem.create_table()
 
-            self.coord_table.insert_many(COORDS_DATA)
-            self.empl_table.insert_many(EMPLOYEES_DATA)
+            table_cor.insert_many(COORDS_DATA)
+            table_emp.insert_many(EMPLOYEES_DATA)
 
-            for row in self.coord_table:
-                self.coord_table_s.insert(*row)
+            for row in table_cor.select:
+                table_mem.insert(*row)
             
-            self.assertEqual(self.coord_table.shape, self.coord_table_s.shape)
+            self.assertEqual(table_cor.shape, table_mem.shape)
 
     
     def test_shared_connection_commit(self):
@@ -310,17 +314,19 @@ class TestSqlTable(unittest.TestCase):
     
     def test_unmanaged_connection_iteration(self):
         
-        self.coord_table.open_connection()
-        self.coord_table.insert_many(COORDS_DATA)
+        table = self.coord_table
+
+        table.open_connection()
+        table.insert_many(COORDS_DATA)
         
-        for idx, _, _, temp in self.coord_table:
+        for idx, _, _, temp in table.select:
             assert isinstance(temp, float)
-            self.coord_table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
+            table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
 
-        self.coord_table.commit()
-        self.coord_table.close_connection()
+        table.commit()
+        table.close_connection()
 
-        rows = self.coord_table.select.fetchall()
+        rows = table.select.fetchall()
 
         self.assertEqual(len(rows), len(COORDS_DATA))
 
@@ -448,17 +454,20 @@ class TestSqlTable(unittest.TestCase):
 
 
     def test_shared_connection_with_one_table(self):
-        with shared_connection(self.coord_table):
-            self.coord_table.tx_conn
-            self.coord_table.tx_cursor
+        
+        table = self.coord_table
 
-            self.coord_table.insert_many(COORDS_DATA)
+        with shared_connection(table):
+            table.tx_conn
+            table.tx_cursor
 
-            for idx, _, _, temp in self.coord_table:
+            table.insert_many(COORDS_DATA)
+
+            for idx, _, _, temp in table.select:
                 assert isinstance(temp, float)
-                self.coord_table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
+                table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
 
-        self.assertEqual(len(self.coord_table), len(COORDS_DATA))
+        self.assertEqual(len(table), len(COORDS_DATA))
 
     
     def test_delete(self):

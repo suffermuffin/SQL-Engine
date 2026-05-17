@@ -446,20 +446,6 @@ class SqlTableMixin:
         if not isinstance(length, int):
             raise ValueError("Unreachable")
         return length
-    
-
-    def __iter__(self) -> Generator[SqlRow, None, None]:
-        """ Database rows iterator """
-        
-        if not self.in_transaction():
-            raise RuntimeError("To use the __iter__ method you have \
-                to keep open the transaction with `transaction()` manager")
-        
-        iter_cursor = self._trans.cursor()
-        iter_cursor.execute(sql.select(self.tablename))
-
-        while row := iter_cursor.fetchone(): 
-            yield row
 
     
     @overload
@@ -529,16 +515,19 @@ class SqlTableMixin:
 
     @property
     def update(self) -> Update:
+        """ UPDATE statement builder and executor """
         return Update(self)
 
     
     @property
     def delete(self) -> Delete:
+        """ DELETE statement builder and executor """
         return Delete(self)
     
 
     @property
     def select(self) -> Select:
+        """ SELECT statement builder and fetcher """
         return Select(self)
 
 

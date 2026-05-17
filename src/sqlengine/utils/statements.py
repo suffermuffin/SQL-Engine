@@ -53,6 +53,8 @@ class Where[T : Statement]:
         return self.op(column, value, "<=")
     
     def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
+        if isinstance(values, str):
+            raise ValueError("Got string as sequence of values in in_, expected tuple/list/etc...")
         placeholder = sql.values_placeholder(len(values))
         self.clause.append(f"{column} IN {placeholder}")
         self.args.extend(values)
@@ -209,7 +211,7 @@ class Select(Statement):
         return self._table.fetchmany(query, *args, size=size)
 
     
-    def fetchall(self):
+    def fetchall(self) -> list[SqlRow]:
         query, args = self.build()
         return self._table.fetchall(query, *args)
     
@@ -223,11 +225,8 @@ class Select(Statement):
 
         Examples:
 
-            >>> from sqlengine import sqlgen as sql
-            >>> where = sql.where("Age" ">" 30)
-            >>> query = sql.select(table.tablename, where)
             >>> with table.transaction():
-            >>>     for batch in table.fetchmany_iterator(1000):
+            >>>     for batch in table.select.where.gt("Age", 30).then.fetchmany_iterator(1000):
             >>>         process_batch(batch)
         """
         if not self._table.in_transaction():
@@ -241,6 +240,22 @@ class Select(Statement):
 
         while batch := iter_cursor.fetchmany(batch_size):
             yield batch
+
+    
+    def __iter__(self) -> Generator[SqlRow, None, None]:
+        """ Database rows iterator """
+        
+        if not self._table.in_transaction():
+            raise RuntimeError("To use the __iter__ method you have \
+                to keep open the transaction of the table with `transaction()` manager")
+        
+        query, exec_args = self.build()
+        
+        iter_cursor = self._table.tx_conn.cursor()
+        iter_cursor.execute(query, exec_args)
+
+        while row := iter_cursor.fetchone(): 
+            yield row
     
 
     def _build(self, where_clause : str, *args : SqlValue):

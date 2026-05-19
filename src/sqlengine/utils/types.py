@@ -47,12 +47,10 @@ def register_type(cls : type[CustomType], type_name : str | None = None) -> None
     Register custom type to be able to store it in tables 
     
     Args:
-        cls (CustomType): Class that implements `from_sql(cls, sql : bytes) -> Self` and `to_sql(self) -> str | int | float | str | bytes | None`
-        type_name (Optional[str]): Colname that would be linked to this type
+        cls (CustomType): Class that implements `from_sql(cls, sql : bytes) -> Self` and `
+            to_sql(self) -> str | int | float | str | bytes | None`
+        type_name (str | None): Colname that would be linked to this type
     """
-
-    if not is_custom_type(cls):
-        raise AttributeError(f"Provided class `{cls.__name__}` does not provide `to_sql` and/or `from_sql` methods")
 
     type_name = type_name if type_name else cls.__name__
     sqlite3.register_adapter(cls, lambda x: x.to_sql())

@@ -191,12 +191,10 @@ class SqlTableMixin:
         
         Examples:
 
-            >>> from sqlengine import sqlgen as sql
             >>> with table.transaction():
-            >>>     for idx, name, age in table:
-            >>>         where = sql.where_equals("ID", idx)
-            >>>         table.update(where, {"Age" : age + 1})
-            >>>     print(table.select())
+            >>>     for idx, age in table.select("ID", "Age"):
+            >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
+            >>>     print(table.select)
         """
         
         self.open_connection()

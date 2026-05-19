@@ -3,3 +3,5 @@ sqlengine.egg-info
 *.ipynb
 *.db
 /temp/*
+
+uv.lock

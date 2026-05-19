@@ -16,13 +16,9 @@ def create_table(
         primary  : list[str]
     ) -> str:
 
-    columns_types = format_list(
-        [
-            f'{col} {dtype}' for col, dtype 
-            in zip(columns, types)
-        ], 
-        False
-    )
+    columns_types = format_list([
+        f'{col} {dtype}' for col, dtype 
+        in zip(columns, types)], brackets=False)
     
     primary_keys = format_list(primary)
     
@@ -83,8 +79,8 @@ def select(
     
     query  = f"SELECT {_columns} FROM {tablename}"
     query += f" WHERE {where_clause}" if where_clause else ""
-    query += f" ORDER BY {order_by}" if order_by else ""
-    query += f" LIMIT {limit}" if limit else ""
+    query += f" ORDER BY {order_by}"  if order_by     else ""
+    query += f" LIMIT {limit}"        if limit        else ""
     query += ";"
 
     return query

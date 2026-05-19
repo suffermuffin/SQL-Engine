@@ -78,7 +78,7 @@ class Where[T : Statement]:
         args = tuple(self.args)
         return where_clause, args
     
-    def reset(self):
+    def reset(self) -> None:
         self.args = []
         self.clause = []
 
@@ -88,7 +88,7 @@ class Where[T : Statement]:
     def __repr__(self) -> str:
         return self._statement.__repr__()
 
-    def _repr_html_(self):
+    def _repr_html_(self) -> str | None:
         if isinstance(self._statement, Select):
             return self._statement._repr_html_()
         return None
@@ -113,11 +113,11 @@ class Statement(ABC):
         self._custom_args  : tuple[SqlValue, ...] = ()
     
     
-    def custom_query(self, query : str, *args):
-        """ Completely custom query that completely replaces builder's expression """
+    def custom_query(self, query : str, *args) -> Self:
+        """ Custom query that completely replaces builder's expression """
         self._custom_query = query
         self._custom_args  = args
-        return None
+        return self
     
 
     def build(self) -> tuple[str, tuple[SqlValue, ...]]:
@@ -130,7 +130,7 @@ class Statement(ABC):
         return query, args
     
 
-    def reset(self):
+    def reset(self) -> None:
         """ Resets statement to reuse object """
         self._where.reset()
         self._custom_query = None
@@ -144,12 +144,12 @@ class Statement(ABC):
 
     
     @abstractmethod
-    def _reset(self):
+    def _reset(self) -> None:
         pass
 
 
     @property
-    def where(self):
+    def where(self) -> Where:
         """ Where clause builder """
         if self.__command__ == "INSERT":
             raise AttributeError("INSERT statement does not have where clause")
@@ -168,7 +168,7 @@ class Statement(ABC):
 
 class MutationalStatement(Statement, ABC):
 
-    def execute(self):
+    def execute(self) -> None:
         query, args = self.build()
         self._table.execute(query, *args)
 
@@ -187,6 +187,11 @@ class Select(Statement):
 
 
     def __call__(self, *columns : str) -> Self:
+        return self.columns(*columns)
+    
+
+    def columns(self, *columns : str) -> Self:
+        """ Column selector """
         self._columns.extend(columns)
         return self
     
@@ -268,7 +273,7 @@ class Select(Statement):
             yield row
     
 
-    def _build(self, where_clause : str, *args : SqlValue):
+    def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
 
         order   = sql.format_list(self._order_by, brackets=False)
         columns = sql.format_list(self._columns,  brackets=False)
@@ -288,14 +293,14 @@ class Select(Statement):
         return query, args
     
     
-    def _reset(self):
+    def _reset(self) -> None:
         self._columns   = []
         self._order_by  = []
         self._aggregate = None
         self._limit     = None
 
 
-    def _repr_html_(self):
+    def _repr_html_(self) -> str | None:
         
         if self._aggregate:
             return None
@@ -311,7 +316,7 @@ class Delete(MutationalStatement):
 
     __command__ = "DELETE"
 
-    def _build(self, where_clause : str, *args : SqlValue):
+    def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
             raise ValueError("Delete statement must have a where clause")
@@ -319,7 +324,7 @@ class Delete(MutationalStatement):
         query = sql.delete_rows(self._table.tablename, where_clause)
         return query, args
     
-    def _reset(self):
+    def _reset(self) -> None:
         pass
     
 
@@ -332,21 +337,24 @@ class Update(MutationalStatement):
         self._set_clauses : list[str] = []
         self._set_args    : list[SqlValue] = []
 
+    
+    def __call__(self, column : str, value : SqlValue) -> Self:
+        return self.set(column, value)
 
-    def set(self, column : str, value : SqlValue):
+
+    def set(self, column : str, value : SqlValue) -> Self:
+        """ Set value to a column """
         self._set_clauses.append(f"{column} = ?")
         self._set_args.append(value)
         return self
 
 
-    def _build(self, where_clause : str, *args : SqlValue):
+    def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         set_clause = sql.format_list(self._set_clauses, brackets=False)
         query = f"UPDATE {self._table.tablename} SET {set_clause} WHERE {where_clause};"
-        set_args = self._set_args.copy()
-        set_args.extend(args)
-        return query, tuple(set_args)
+        return query, (*self._set_args, *args)
     
     
-    def _reset(self):
+    def _reset(self) -> None:
         self._set_clauses = []
         self._set_args = []

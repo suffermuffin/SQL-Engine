@@ -25,6 +25,10 @@ class Where[T : Statement]:
         """ Returns upper statement object """
         return self._statement
     
+    def __call__(self, where_clasuse : str, *args : SqlValue) -> Self:
+        """ Shortcut to custom where clause """
+        return self.custom(where_clasuse, *args)
+
     def op(self, column : str, value : SqlValue, operator : str) -> Self:
         self.clause.append(f"{column} {operator} ?")
         self.args.append(value)
@@ -53,6 +57,22 @@ class Where[T : Statement]:
     
     def lte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<=")
+    
+    def like(self, column : str, pattern : str) -> Self:
+        """ 
+        Like operator. Pattern is a SQL wildcard pattern 
+        (i.e. `%` for any string, `_` for one character).
+        """
+        return self.op(column, pattern, "LIKE")
+    
+    def is_null(self, column : str) -> Self:
+        self.clause.append(f"{column} IS NULL")
+        return self
+    
+    def inverted(self) -> Self:
+        """ Invert last where clause with NOT """
+        self.clause[-1] = f"NOT ({self.clause[-1]})"
+        return self
     
     def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
         if isinstance(values, str):

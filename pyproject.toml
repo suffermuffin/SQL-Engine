@@ -15,3 +15,8 @@ packages = ["sqlengine"]
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/suffermuffin/SQL-Engine"
+Repository = "https://github.com/suffermuffin/SQL-Engine.git"
+Documentation = "https://github.com/suffermuffin/SQL-Engine/blob/main/docs/index.md"

@@ -106,6 +106,8 @@ __primary__ : list[str]
 
 ## Table Declaration
 
+More details at [Declaration](docs/table_declaration.md#table-declaration).
+
 ```py
 from sqlengine import SqlTableMixin
 
@@ -132,7 +134,7 @@ class Employees(SqlTableMixin):
 
 ## Instantiation
 
-More details about [Instantiation](docs/table_declaration.md#instantiation).
+More details at [Instantiation](docs/table_declaration.md#instantiation).
 
 ```py
 # Create an instance of the table class 
@@ -186,7 +188,7 @@ table
 
 ## Select Query
 
-More details at [Statements](docs/statements.md)
+More details at [Statements](docs/statements.md).
 
 ```py
 # Query select and fetch
@@ -222,7 +224,7 @@ table.delete.where.eq(ID, 5).then.execute()
 
 ## Transaction
 
-More details at [Transaction](docs/transactions.md)
+More details at [Transaction](docs/transactions.md).
 
 ```py
 # Operate within a transaction
@@ -234,7 +236,7 @@ with table.transaction():
 
 ## Get Item
 
-More details at [Transaction](docs/syntax_sugar.md)
+More details at [Transaction](docs/syntax_sugar.md).
 
 ```py
 # Fetch row by primary key

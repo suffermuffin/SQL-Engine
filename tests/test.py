@@ -582,6 +582,261 @@ class TestSqlTable(unittest.TestCase):
         
         table.close_connection()
 
+    
+    # Generated
+    
+    def test_where_basic_equality(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        # eq
+        where = table.select.where.eq("ID", 3)
+        query, args = where.build()
+        self.assertEqual(query, "ID = ?")
+        self.assertEqual(args, (3,))
+
+        # neq, gt, lt, gte, lte
+        where = table.select.where.neq("temp", 2.2).gt("ID", 1).lt("temp", 5.0)
+        query, args = where.build()
+        self.assertIn("temp != ?", query)
+        self.assertIn("ID > ?", query)
+        self.assertIn("temp < ?", query)
+        self.assertEqual(args, (2.2, 1, 5.0))
+
+        # like
+        where = table.select.where.like("name", "loc%")
+        query, args = where.build()
+        self.assertEqual(query, "name LIKE ?")
+        self.assertEqual(args, ("loc%",))
+
+    
+    def test_where_in_and_between(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        # IN
+        where = table.select.where.in_("ID", [1, 3, 5])
+        query, args = where.build()
+        self.assertEqual(query, "ID IN (?, ?, ?)")
+        self.assertEqual(args, (1, 3, 5))
+
+        # BETWEEN
+        where = table.select.where.between("temp", 2.0, 6.0)
+        query, args = where.build()
+        self.assertEqual(query, "temp BETWEEN ? AND ?")
+        self.assertEqual(args, (2.0, 6.0))
+
+        with self.assertRaises(ValueError):
+            table.select.where.in_("ID", "1,2,3")
+
+    
+    def test_where_is_null_and_inverted(self):
+        table = self.empl_table
+        table.insert_many(EMPLOYEES_DATA)
+
+        # IS NULL
+        where = table.select.where.is_null("position")
+        query, args = where.build()
+        self.assertEqual(query, "position IS NULL")
+        self.assertEqual(args, ())
+
+        # Inverted (NOT)
+        where = table.select.where.eq("salary", 100.0).inverted()
+        query, args = where.build()
+        self.assertEqual(query, "NOT (salary = ?)")
+        self.assertEqual(args, (100.0,))
+
+    
+    def test_where_join(self):
+        table = self.empl_table
+        table.insert_many(EMPLOYEES_DATA)
+
+        where = table.select.where.eq("salary", 100.0).eq("position", "pos0").join("OR")
+        query, args = where.build()
+
+        self.assertEqual(query, "(salary = ? OR position = ?)")
+        self.assertEqual(args, (100.0, "pos0"))
+
+    
+    def test_where_custom_and_call(self):
+        table = self.coord_table
+        
+        where = table.select.where("temp > ? AND name != ?", 5.0, "loc5")
+        query, args = where.build()
+        self.assertEqual(query, "temp > ? AND name != ?")
+        self.assertEqual(args, (5.0, "loc5"))
+
+    
+    def test_where_reset(self):
+        table = self.coord_table
+        w = table.select.where
+        w.eq("a", 1).gt("b", 2)
+        w.reset()
+        query, args = w.build()
+        self.assertEqual(query, "")
+        self.assertEqual(args, ())
+
+    
+    def test_select_columns_and_fetchone(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        # __call__
+        row = table.select("ID", "name").where.eq("ID", 3).then.fetchone()
+        self.assertEqual(row, (3, "loc3"))
+
+        # columns
+        row = table.select.columns("temp").where.eq("ID", 5).then.fetchone()
+        self.assertEqual(row, (5.5,))
+
+    
+    def test_select_order_by_and_limit(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        rows = table.select("ID", "temp").order_by("temp", ascending=False).limit(3).fetchall()
+        expected = [(10, 10.10), (7, 7.7), (6, 6.6)]
+        self.assertEqual(rows, expected)
+
+    
+    def test_select_aggregate(self):
+        table = self.empl_table
+        table.insert_many(EMPLOYEES_DATA)
+
+        # COUNT
+        count = table.select.aggregate("COUNT").fetchone()[0]
+        self.assertEqual(count, len(EMPLOYEES_DATA))
+
+        # SUM
+        total_salary = table.select("salary").aggregate("SUM").fetchone()[0]
+        expected_sum = sum(row[3] for row in EMPLOYEES_DATA)
+
+        assert isinstance(total_salary, float)
+
+        self.assertAlmostEqual(total_salary, expected_sum)
+
+        # AVG, MIN, MAX
+        avg = table.select("salary").aggregate("AVG").fetchone()[0]
+        min_ = table.select("salary").aggregate("MIN").fetchone()[0]
+        max_ = table.select("salary").aggregate("MAX").fetchone()[0]
+        
+        assert isinstance(avg, float)
+
+        self.assertAlmostEqual(avg, expected_sum / len(EMPLOYEES_DATA))
+        self.assertEqual(min_, 100.0)
+        self.assertEqual(max_, 144.4)
+
+        # multi aggregation
+        with self.assertRaises(ValueError):
+            table.select.aggregate("COUNT").aggregate("SUM")
+
+    
+    def test_select_fetchmany_and_iterator(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        # fetchmany
+        rows = table.select.limit(5).fetchmany(3)
+        self.assertEqual(len(rows), 3)
+
+        # fetchmany_iterator
+        with table.transaction():
+            batches = list(table.select.fetchmany_iterator(2))
+            # Должно быть 5 батчей (9 строк, batch_size=2)
+            self.assertEqual(len(batches), 5)
+            # Проверка, что все строки собраны
+            all_rows = [row for batch in batches for row in batch]
+            self.assertEqual(len(all_rows), len(COORDS_DATA))
+
+        # __iter__
+        with table.transaction():
+            rows_iter = list(table.select.where.gt("ID", 2).then)
+            expected_ids = [row[0] for row in COORDS_DATA if row[0] > 2]
+            self.assertEqual(len(rows_iter), len(expected_ids))
+
+    
+    def test_select_repr_html(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        # HTML
+        html = table.select._repr_html_()
+        self.assertIsInstance(html, str)
+
+        assert isinstance(html, str)
+
+        self.assertIn("<table", html)
+
+        agg = table.select.aggregate("COUNT")
+        self.assertIsNone(agg._repr_html_())
+
+    # UPDATE
+    def test_update_execute(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        table.update.set("temp", 99.9).where.eq("ID", 2).then.execute()
+        row = table.select("temp").where.eq("ID", 2).then.fetchone()
+        self.assertEqual(row, (99.9,))
+
+        table.update.set("name", "updated").where.in_("ID", [0, 3, 5]).then.execute()
+        rows = table.select("name").where.in_("ID", [0,3,5]).then.fetchall()
+        names = [row[0] for row in rows]
+        self.assertEqual(names, ["updated", "updated", "updated"])
+
+    # SELECT
+    def test_delete_execute(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+        initial_len = len(table)
+
+        table.delete.where.eq("ID", 7).then.execute()
+        self.assertEqual(len(table), initial_len - 1)
+        self.assertIsNone(table[7])
+
+        # Can't delete without where
+        with self.assertRaises(ValueError):
+            table.delete.execute()
+
+
+    def test_complex_query(self):
+        table = self.empl_table
+        table.insert_many(EMPLOYEES_DATA)
+
+        rows = table.select("ID", "salary")\
+            .where\
+                .gt("salary", 110)\
+                .lt("salary", 140)\
+            .then\
+                .order_by("ID")\
+                .fetchall()
+        
+        
+        expected = [(1, 111.1), (1, 111.1), (2, 122.2), (3, 133.3)]
+        
+        self.assertEqual(rows, expected)
+
+        # join with OR
+        rows = table.select("ID", "position")\
+            .where\
+                .eq("position", "pos0")\
+                .eq("ID", 3)\
+                .join("OR")\
+            .then\
+                .fetchall()
+
+        expected_positions = [(row[0], row[1]) for row in EMPLOYEES_DATA if row[4] == "pos0" or row[0] == 3]
+        self.assertEqual(len(rows), len(expected_positions))
+
+    
+    def test_custom_query(self):
+        table = self.coord_table
+        table.insert_many(COORDS_DATA)
+
+        # Completely custom query
+        rows = table.select.custom_query("SELECT name, temp FROM Coordinates WHERE ID > ?", 5).fetchall()
+        expected = [(name, temp) for id_, name, _, temp in COORDS_DATA if id_ > 5]
+        self.assertEqual(rows, expected)
 
 
 if __name__ == '__main__':

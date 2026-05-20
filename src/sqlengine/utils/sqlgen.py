@@ -1,4 +1,4 @@
-from typing import Sequence, Sequence
+from typing import Sequence
 
 
 def format_list(items : Sequence | set, brackets : bool = True) -> str:
@@ -16,13 +16,9 @@ def create_table(
         primary  : list[str]
     ) -> str:
 
-    columns_types = format_list(
-        [
-            f'{col} {dtype}' for col, dtype 
-            in zip(columns, types)
-        ], 
-        False
-    )
+    columns_types = format_list([
+        f'{col} {dtype}' for col, dtype 
+        in zip(columns, types)], brackets=False)
     
     primary_keys = format_list(primary)
     
@@ -47,7 +43,7 @@ def bulk_placeholder(n_values : int, n_rows : int) -> str:
     return f"{format_list([place_holder]*n_rows, False)}"
 
 
-def insert(tablename : str, columns : list[str], values : str):
+def insert(tablename : str, columns : list[str], values : str) -> str:
     """ Creates insert query """
     return f"INSERT INTO {tablename} {format_list(columns)} VALUES {values};"
 
@@ -83,8 +79,8 @@ def select(
     
     query  = f"SELECT {_columns} FROM {tablename}"
     query += f" WHERE {where_clause}" if where_clause else ""
-    query += f" ORDER BY {order_by}" if order_by else ""
-    query += f" LIMIT {limit}" if limit else ""
+    query += f" ORDER BY {order_by}"  if order_by     else ""
+    query += f" LIMIT {limit}"        if limit        else ""
     query += ";"
 
     return query

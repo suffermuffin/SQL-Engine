@@ -8,93 +8,137 @@ if TYPE_CHECKING:
 
 from . import sqlgen as sql
 from .types import SqlValue, SqlRow
-from .html_repr import repr_html
+from .repr  import to_html
 
 
 class Where[T : Statement]:
     """ Where clause build helper """
+    
+    
     def __init__(self, statement : T):
         
         self._statement = statement
+        
+        self._clause   : list[str] = []
+        self._args     : list[SqlValue] = []
 
-        self.clause   : list[str] = []
-        self.args     : list[SqlValue] = []
 
     @property
     def then(self) -> T:
         """ Returns upper statement object """
         return self._statement
     
+    
+    def __call__(self, where_clasuse : str, *args : SqlValue) -> Self:
+        """ Shortcut to custom where clause """
+        return self.custom(where_clasuse, *args)
+
+    
     def op(self, column : str, value : SqlValue, operator : str) -> Self:
-        self.clause.append(f"{column} {operator} ?")
-        self.args.append(value)
+        self._clause.append(f"{column} {operator} ?")
+        self._args.append(value)
         return self
 
+    
     def join(self, lop : str = "AND") -> Self:
         """ Joins previous expression via logical operator `lop` """
-        joined = f" {lop} ".join(self.clause)
-        self.clause = [f"({joined})"]
+        joined = f" {lop} ".join(self._clause)
+        self._clause = [f"({joined})"]
         return self
 
+    
     def eq(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "=")
 
+    
     def neq(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "!=")
+    
     
     def gt(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, ">")
     
+    
     def gte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, ">=")
+    
     
     def lt(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<")
     
+    
     def lte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<=")
+    
+    
+    def like(self, column : str, pattern : str) -> Self:
+        """ 
+        Like operator. Pattern is a SQL wildcard pattern 
+        (i.e. `%` for any string, `_` for one character).
+        """
+        return self.op(column, pattern, "LIKE")
+    
+    
+    def is_null(self, column : str) -> Self:
+        self._clause.append(f"{column} IS NULL")
+        return self
+    
+    
+    def inverted(self) -> Self:
+        """ Invert last where clause with NOT """
+        self._clause[-1] = f"NOT ({self._clause[-1]})"
+        return self
+    
     
     def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
         if isinstance(values, str):
             raise ValueError("Got string as sequence of values in in_, expected tuple/list/etc...")
         placeholder = sql.values_placeholder(len(values))
-        self.clause.append(f"{column} IN {placeholder}")
-        self.args.extend(values)
+        self._clause.append(f"{column} IN {placeholder}")
+        self._args.extend(values)
         return self
     
+    
     def between(self, column : str, start : SqlValue, stop : SqlValue) -> Self:
-        self.clause.append(f"{column} BETWEEN ? AND ?")
-        self.args.extend((start, stop))
+        self._clause.append(f"{column} BETWEEN ? AND ?")
+        self._args.extend((start, stop))
         return self
+    
     
     def custom(self, where_clause : str, *args : SqlValue) -> Self:
         """ Add custom where clause (e.g. `where.custom("Age > ? AND Age != ?", 10, 25)`) """
-        self.clause.append(where_clause)
-        self.args.extend(args)
+        self._clause.append(where_clause)
+        self._args.extend(args)
         return self
 
+    
     def build(self, lop : str = "AND") -> tuple[str, tuple[SqlValue, ...]]:
-        where_clause = f" {lop} ".join(self.clause).strip()
-        args = tuple(self.args)
+        where_clause = f" {lop} ".join(self._clause).strip()
+        args = tuple(self._args)
         return where_clause, args
     
-    def reset(self):
-        self.args = []
-        self.clause = []
+    
+    def reset(self) -> None:
+        self._args = []
+        self._clause = []
 
+    
     def __str__(self) -> str:
         return self._statement.__str__()
 
+    
     def __repr__(self) -> str:
         return self._statement.__repr__()
 
-    def _repr_html_(self):
+    
+    def _repr_html_(self) -> str | None:
         if isinstance(self._statement, Select):
             return self._statement._repr_html_()
         return None
     
+    
     def __len__(self) -> int:
-        return len(self.args)
+        return len(self._args)
 
 
 class Statement(ABC):
@@ -107,17 +151,17 @@ class Statement(ABC):
     def __init__(self, table : SqlTableMixin) -> None:
 
         self._table = table
-        self._where = Where(self)
+        self._where: Where[Self] = Where(self)
 
         self._custom_query : str | None = None
         self._custom_args  : tuple[SqlValue, ...] = ()
     
     
-    def custom_query(self, query : str, *args):
-        """ Completely custom query that completely replaces builder's expression """
+    def custom_query(self, query : str, *args) -> Self:
+        """ Custom query that completely replaces builder's expression """
         self._custom_query = query
         self._custom_args  = args
-        return None
+        return self
     
 
     def build(self) -> tuple[str, tuple[SqlValue, ...]]:
@@ -130,12 +174,18 @@ class Statement(ABC):
         return query, args
     
 
-    def reset(self):
+    def reset(self) -> None:
         """ Resets statement to reuse object """
         self._where.reset()
         self._custom_query = None
         self._custom_args = ()
         self._reset()
+    
+    
+    @property
+    def where(self) -> Where[Self]:
+        """ Where clause builder """
+        return self._where
     
     
     @abstractmethod
@@ -144,17 +194,9 @@ class Statement(ABC):
 
     
     @abstractmethod
-    def _reset(self):
+    def _reset(self) -> None:
         pass
 
-
-    @property
-    def where(self):
-        """ Where clause builder """
-        if self.__command__ == "INSERT":
-            raise AttributeError("INSERT statement does not have where clause")
-        return self._where
-    
 
     def __repr__(self) -> str:
         query, args = self.build()
@@ -168,14 +210,14 @@ class Statement(ABC):
 
 class MutationalStatement(Statement, ABC):
 
-    def execute(self):
+    
+    def execute(self) -> None:
         query, args = self.build()
         self._table.execute(query, *args)
 
 
 class Select(Statement):
 
-    __command__ = "SELECT"
 
     def __init__(self, table : SqlTableMixin) -> None:
         super().__init__(table)
@@ -187,6 +229,11 @@ class Select(Statement):
 
 
     def __call__(self, *columns : str) -> Self:
+        return self.columns(*columns)
+    
+
+    def columns(self, *columns : str) -> Self:
+        """ Column selector """
         self._columns.extend(columns)
         return self
     
@@ -268,7 +315,7 @@ class Select(Statement):
             yield row
     
 
-    def _build(self, where_clause : str, *args : SqlValue):
+    def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
 
         order   = sql.format_list(self._order_by, brackets=False)
         columns = sql.format_list(self._columns,  brackets=False)
@@ -288,14 +335,14 @@ class Select(Statement):
         return query, args
     
     
-    def _reset(self):
+    def _reset(self) -> None:
         self._columns   = []
         self._order_by  = []
         self._aggregate = None
         self._limit     = None
 
 
-    def _repr_html_(self):
+    def _repr_html_(self) -> str | None:
         
         if self._aggregate:
             return None
@@ -304,14 +351,13 @@ class Select(Statement):
         columns   = self._table.columns if len(self._columns) == 0 or "*" in self._columns else self._columns
         repr_rows = self.fetchmany(limit)
 
-        return repr_html(self._table.tablename, columns, repr_rows, limit=limit-1)
+        return to_html(self._table.tablename, columns, repr_rows, limit=limit-1)
     
 
 class Delete(MutationalStatement):
 
-    __command__ = "DELETE"
-
-    def _build(self, where_clause : str, *args : SqlValue):
+    
+    def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
             raise ValueError("Delete statement must have a where clause")
@@ -319,34 +365,36 @@ class Delete(MutationalStatement):
         query = sql.delete_rows(self._table.tablename, where_clause)
         return query, args
     
-    def _reset(self):
+    def _reset(self) -> None:
         pass
     
 
 class Update(MutationalStatement):
 
-    __command__ = "UPDATE"
 
     def __init__(self, table : SqlTableMixin) -> None:
         super().__init__(table)
         self._set_clauses : list[str] = []
         self._set_args    : list[SqlValue] = []
 
+    
+    def __call__(self, column : str, value : SqlValue) -> Self:
+        return self.set(column, value)
 
-    def set(self, column : str, value : SqlValue):
+
+    def set(self, column : str, value : SqlValue) -> Self:
+        """ Set value to a column """
         self._set_clauses.append(f"{column} = ?")
         self._set_args.append(value)
         return self
 
 
-    def _build(self, where_clause : str, *args : SqlValue):
+    def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         set_clause = sql.format_list(self._set_clauses, brackets=False)
         query = f"UPDATE {self._table.tablename} SET {set_clause} WHERE {where_clause};"
-        set_args = self._set_args.copy()
-        set_args.extend(args)
-        return query, tuple(set_args)
+        return query, (*self._set_args, *args)
     
     
-    def _reset(self):
+    def _reset(self) -> None:
         self._set_clauses = []
         self._set_args = []

@@ -3,3 +3,4 @@ sqlengine.egg-info
 *.ipynb
 *.db
 /temp/*
+/dist/*

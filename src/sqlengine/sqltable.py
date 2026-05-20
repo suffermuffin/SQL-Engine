@@ -7,7 +7,7 @@ from typing     import Sequence, Literal, overload
 
 from .utils            import sqlgen as sql
 from .utils.statements import Select, Update, Delete
-from .utils.html_repr  import repr_html
+from .utils.repr       import to_html
 
 from .utils.types import SqlRow, SqlValue, SqlType, Schema
 from .utils.types import register_type, is_custom_type, pytype_to_sqltype
@@ -61,7 +61,7 @@ class SqlTableMixin:
         self._write_db(force_drop)
         
     
-    def _validate_attributes(self):
+    def _validate_attributes(self) -> None:
 
         if not hasattr(self, "__tablename__") or self.__tablename__ is None:
             self.__tablename__ = self.__class__.__name__
@@ -89,7 +89,7 @@ class SqlTableMixin:
             raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
         
 
-    def _register_types(self):
+    def _register_types(self) -> None:
         
         resolved : list[str] = []
         assert_register_types = False
@@ -121,7 +121,7 @@ class SqlTableMixin:
         self.__types_sql__ = resolved
         
 
-    def _write_db(self, force_drop : bool):
+    def _write_db(self, force_drop : bool) -> None:
 
         if self.database == ":memory:":
             logger.debug(f"{self.tablename}: Using in-memory database")
@@ -138,13 +138,33 @@ class SqlTableMixin:
 
         self.create_table()
 
+    
+    def create_table(self) -> None:
+        """ Create table if not exists """
+       
+        query = sql.create_table(
+            self.tablename, self.columns, 
+            self.types_sql, self.primary
+        )
+
+        self.execute(query)
+
+
+    def drop_table(self, confirm : bool = False) -> None:
+        """ Drops table if it exists. """
+        
+        if not confirm:
+            raise ValueError("To drop table you have to pass `confirm=True`")
+        
+        self.execute(sql.drop_table(self.tablename))
+
 
     def connect(self) -> sqlite3.Connection:
         """ Shortcut to sqlite3 connection context manager """
         return sqlite3.connect(self.database, **self.connection_params)
     
 
-    def open_connection(self):
+    def open_connection(self) -> None:
         """ Opens unmanaged transaction """
         if self.in_transaction():
             raise RuntimeError("Can't re-open existing connection")
@@ -153,7 +173,7 @@ class SqlTableMixin:
         self._trans_cursor = self._trans.cursor()
 
     
-    def close_connection(self):
+    def close_connection(self) -> None:
         """ Closes unmanaged transaction """
         if not self.in_transaction():
             return
@@ -167,14 +187,14 @@ class SqlTableMixin:
         del(self._trans)
 
 
-    def commit(self):
+    def commit(self) -> None:
         if not self.in_transaction():
             raise RuntimeError("Can't commit outside transaction mode")
         
         self._trans.commit()
 
 
-    def rollback(self):
+    def rollback(self) -> None:
         if not self.in_transaction():
             raise RuntimeError("Can't rollback outside transaction mode")
         
@@ -191,12 +211,10 @@ class SqlTableMixin:
         
         Examples:
 
-            >>> from sqlengine import sqlgen as sql
             >>> with table.transaction():
-            >>>     for idx, name, age in table:
-            >>>         where = sql.where_equals("ID", idx)
-            >>>         table.update(where, {"Age" : age + 1})
-            >>>     print(table.select())
+            >>>     for idx, age in table.select("ID", "Age"):
+            >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
+            >>>     print(table.select)
         """
         
         self.open_connection()
@@ -245,6 +263,7 @@ class SqlTableMixin:
             cursor.execute(query, args)
             return getattr(cursor, method)()
 
+    
     @overload    
     def _execute(self, query : str, args : tuple[SqlValue, ...], method : Literal["execute"]) -> None: ...
     @overload
@@ -294,26 +313,6 @@ class SqlTableMixin:
             *args (list[tuple[SqlValue, ...]]): Arguments to the execution
         """
         return self._execute(query, args, method="executemany")
-    
-    
-    def create_table(self) -> None:
-        """ Create table if not exists """
-       
-        query = sql.create_table(
-            self.tablename, self.columns, 
-            self.types_sql, self.primary
-        )
-
-        self.execute(query)
-
-
-    def drop_table(self, confirm : bool = False) -> None:
-        """ Drops table if it exists. """
-        
-        if not confirm:
-            raise ValueError("To drop table you have to pass `confirm=True`")
-        
-        self.execute(sql.drop_table(self.tablename))
 
 
     def fetchone(self, query : str, *args : SqlValue) -> SqlRow:
@@ -434,12 +433,12 @@ class SqlTableMixin:
         )
     
 
-    def _repr_html_(self):
+    def _repr_html_(self) -> str | None:
 
         if self.database == ":memory:":
             return None
         
-        return repr_html(self.tablename, self.columns, self.head(11), 10)
+        return to_html(self.tablename, self.columns, self.head(11), 10)
     
 
     def __len__(self) -> int:
@@ -467,8 +466,6 @@ class SqlTableMixin:
 
         if isinstance(key, slice):
             
-            logger.debug(f"Got slice: {key}")
-
             primary = self.primary[0]
 
             if key.start is None:
@@ -487,8 +484,6 @@ class SqlTableMixin:
                 step = 1
             else:
                 step = key.step
-
-            logger.debug(f"Transformed: {start}, {stop}, {step}")
 
             if not (isinstance(start, int) and isinstance(stop, int)):
                 raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")

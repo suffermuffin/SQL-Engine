@@ -66,9 +66,7 @@ And last (but not least) is data inspection. If you need to quickly inspect exis
 To install `sqlengine`, you can use `pip`:
 
 ```sh
-git clone --depth 1 https://github.com/suffermuffin/SQL-Engine.git
-cd SQL-Engine
-pip install -e .
+pip install sqlengine-lite
 ```
 
 ## Env
@@ -81,7 +79,7 @@ SQL_ENGINE_LOG_LEVEL=INFO
 
 # Quick Start
 
-All you have to do to create your own cute little table is to [inherit](docs/table_declaration.md#class-declaration) `SqlTableMixin` class or to create your own [schema](docs/table_declaration.md#schema-declaration) and declare desired properties of your table's columns. They are:
+All you have to do to create your own cute little table is to [inherit](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#class-declaration) `SqlTableMixin` class or to create your own [schema](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#schema-declaration) and declare desired properties of your table's columns. They are:
 
 
 _Name of the table that will be used in queries. If omitted in inherited class declaration, then it will take the class name._
@@ -106,7 +104,7 @@ __primary__ : list[str]
 
 ## Table Declaration
 
-More details at [Declaration](docs/table_declaration.md#table-declaration).
+More details at [Declaration](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-declaration).
 
 ```py
 from sqlengine import SqlTableMixin
@@ -134,7 +132,7 @@ class Employees(SqlTableMixin):
 
 ## Instantiation
 
-More details at [Instantiation](docs/table_declaration.md#table-instantiation).
+More details at [Instantiation](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-instantiation).
 
 ```py
 # Create an instance of the table class 
@@ -188,7 +186,7 @@ table
 
 ## Select Query
 
-More details at [Statements](docs/statements.md).
+More details at [Statements](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/statements.md).
 
 ```py
 # Query select and fetch
@@ -224,7 +222,7 @@ table.delete.where.eq(ID, 5).then.execute()
 
 ## Transaction
 
-More details at [Transaction](docs/transactions.md).
+More details at [Transaction](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/transactions.md).
 
 ```py
 # Operate within a transaction
@@ -236,7 +234,7 @@ with table.transaction():
 
 ## Get Item
 
-More details at [Syntax Sugar](docs/syntax_sugar.md).
+More details at [Syntax Sugar](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/syntax_sugar.md).
 
 ```py
 # Fetch row by primary key
@@ -274,4 +272,4 @@ to_csv(table.select.where.gt(Salary, 70_000), "temp/query.csv")
 
 # Full Documentation
 
-For detailed usage, API reference, and advanced examples, see the [full documentation](docs/index.md).
+For detailed usage, API reference, and advanced examples, see the [full documentation](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/index.md).

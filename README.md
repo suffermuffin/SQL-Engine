@@ -19,7 +19,7 @@
 
 # Sql-Engine
 
-My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies **(vibe-code free!)**
+My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies.
 
 
 ## Features
@@ -236,7 +236,7 @@ with table.transaction():
 
 ## Get Item
 
-More details at [Transaction](docs/syntax_sugar.md).
+More details at [Syntax Sugar](docs/syntax_sugar.md).
 
 ```py
 # Fetch row by primary key

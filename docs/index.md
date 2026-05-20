@@ -5,13 +5,6 @@ Welcome to the documentation of `sqlengine`, a Python library designed to simpli
 ## Table of Contents
 
 1. **Table Declaration**
-# Documentation Index
-
-Welcome to the documentation of `sqlengine`, a Python library designed to simplify database operations with SQLite.
-
-## Table of Contents
-
-1. **Table Declaration**
    - [Overview](table_declaration.md)
    - [Class Declaration](table_declaration.md#class-declaration)
    - [Schema Declaration](table_declaration.md#schema-declaration)

@@ -1,5 +1,5 @@
 [project]
-name = "sqlengine"
+name = "sqlengine-lite"
 version = "2.1.0"
 description = "Cute sqlite3 wrapper for sql tables"
 readme = "README.md"

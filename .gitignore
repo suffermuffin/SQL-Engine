@@ -1,5 +1,5 @@
 __pycache__
-sqlengine.egg-info
+*.egg-info
 *.ipynb
 *.db
 /temp/*

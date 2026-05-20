@@ -7,7 +7,7 @@ from typing     import Sequence, Literal, overload
 
 from .utils            import sqlgen as sql
 from .utils.statements import Select, Update, Delete
-from .utils.html_repr  import repr_html
+from .utils.repr       import to_html
 
 from .utils.types import SqlRow, SqlValue, SqlType, Schema
 from .utils.types import register_type, is_custom_type, pytype_to_sqltype
@@ -437,7 +437,7 @@ class SqlTableMixin:
         if self.database == ":memory:":
             return None
         
-        return repr_html(self.tablename, self.columns, self.head(11), 10)
+        return to_html(self.tablename, self.columns, self.head(11), 10)
     
 
     def __len__(self) -> int:

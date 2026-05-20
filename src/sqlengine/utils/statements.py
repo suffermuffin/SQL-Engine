@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from . import sqlgen as sql
 from .types import SqlValue, SqlRow
-from .html_repr import repr_html
+from .repr  import to_html
 
 
 class Where[T : Statement]:
@@ -127,7 +127,7 @@ class Statement(ABC):
     def __init__(self, table : SqlTableMixin) -> None:
 
         self._table = table
-        self._where = Where(self)
+        self._where: Where[Self] = Where(self)
 
         self._custom_query : str | None = None
         self._custom_args  : tuple[SqlValue, ...] = ()
@@ -158,6 +158,12 @@ class Statement(ABC):
         self._reset()
     
     
+    @property
+    def where(self) -> Where[Self]:
+        """ Where clause builder """
+        return self._where
+    
+    
     @abstractmethod
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         pass
@@ -167,14 +173,6 @@ class Statement(ABC):
     def _reset(self) -> None:
         pass
 
-
-    @property
-    def where(self) -> Where:
-        """ Where clause builder """
-        if self.__command__ == "INSERT":
-            raise AttributeError("INSERT statement does not have where clause")
-        return self._where
-    
 
     def __repr__(self) -> str:
         query, args = self.build()
@@ -195,7 +193,6 @@ class MutationalStatement(Statement, ABC):
 
 class Select(Statement):
 
-    __command__ = "SELECT"
 
     def __init__(self, table : SqlTableMixin) -> None:
         super().__init__(table)
@@ -329,7 +326,7 @@ class Select(Statement):
         columns   = self._table.columns if len(self._columns) == 0 or "*" in self._columns else self._columns
         repr_rows = self.fetchmany(limit)
 
-        return repr_html(self._table.tablename, columns, repr_rows, limit=limit-1)
+        return to_html(self._table.tablename, columns, repr_rows, limit=limit-1)
     
 
 class Delete(MutationalStatement):

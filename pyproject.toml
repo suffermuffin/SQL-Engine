@@ -1,6 +1,6 @@
 [project]
 name = "sqlengine"
-version = "2.0.0"
+version = "2.1.0"
 description = "Cute sqlite3 wrapper for sql tables"
 readme = "README.md"
 requires-python = ">=3.12"

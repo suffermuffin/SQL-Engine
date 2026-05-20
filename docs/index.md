@@ -12,7 +12,7 @@ Welcome to the documentation of `sqlengine`, a Python library designed to simpli
 
 2. **Statements**
    - [Overview](statements.md)
-   - [Statements](statements.md#statements)
+   - [Statements](statements.md#1-statements)
    - [Where](statements.md#11-where)
    - [Select](statements.md#12-select)
    - [Update](statements.md#13-update)

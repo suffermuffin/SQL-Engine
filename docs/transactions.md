@@ -46,7 +46,7 @@ older_homies
 
 ## 7.2. Shared Connection
 
-To use multiple databases and tables in the same transaction (spanning multiple databases), you can use `shared_connection` util.
+To use multiple databases and tables in the same transaction (spanning either one or multiple databases), you can use `shared_connection` util. `shared_connection` creates connection across one or more databases for multiple tables by manipulating their transaction attributes.
 
 ```py
 CHINOOK_DB = "temp/chinook.db"
@@ -96,8 +96,8 @@ Note that you have to use `table.commit()` or `table.rollback()` after the opera
 It works fine between multiple tables as well as `shared_connection`. Here an example of coping one table to the other while in transaction:
 
 ```py
-table_original  = schema.table_from_database(CHINOOK_DB, "Customer")
-schema_         = table_original.schema
+table_original = schema.table_from_database(CHINOOK_DB, "Customer")
+schema_        = table_original.schema
 
 table_copy = schema.table_from_schema(":memory:", schema_)
 
@@ -116,3 +116,5 @@ table_original.close_connection()
 ...
 
 ```
+
+**Note:** This approach might be unpredictable if used within the same database file across multiple tables. In such case a `shared_connection` is suggested, as it uses optimal connection managment.

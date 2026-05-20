@@ -134,7 +134,7 @@ class Employees(SqlTableMixin):
 
 ## Instantiation
 
-More details at [Instantiation](docs/table_declaration.md#instantiation).
+More details at [Instantiation](docs/table_declaration.md#table-instantiation).
 
 ```py
 # Create an instance of the table class 

@@ -466,8 +466,6 @@ class SqlTableMixin:
 
         if isinstance(key, slice):
             
-            logger.debug(f"Got slice: {key}")
-
             primary = self.primary[0]
 
             if key.start is None:
@@ -486,8 +484,6 @@ class SqlTableMixin:
                 step = 1
             else:
                 step = key.step
-
-            logger.debug(f"Transformed: {start}, {stop}, {step}")
 
             if not (isinstance(start, int) and isinstance(stop, int)):
                 raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")

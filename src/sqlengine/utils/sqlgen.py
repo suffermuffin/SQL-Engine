@@ -1,4 +1,4 @@
-from typing import Sequence, Sequence
+from typing import Sequence
 
 
 def format_list(items : Sequence | set, brackets : bool = True) -> str:

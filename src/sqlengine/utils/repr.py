@@ -64,8 +64,10 @@ def to_csv(builder : Select | Where[Select] | SqlTableMixin, path : str) -> None
     from .statements import Where
 
     match builder:
-        case Where(): builder = builder.then
-        case SqlTableMixin(): builder = builder.select
+        case Where():
+            builder = builder.then
+        case SqlTableMixin():
+            builder = builder.select
 
     if builder._aggregate:
         raise AssertionError("Aggregated queries are not supported")

@@ -742,9 +742,9 @@ class TestSqlTable(unittest.TestCase):
         # fetchmany_iterator
         with table.transaction():
             batches = list(table.select.fetchmany_iterator(2))
-            # Должно быть 5 батчей (9 строк, batch_size=2)
+        
             self.assertEqual(len(batches), 5)
-            # Проверка, что все строки собраны
+        
             all_rows = [row for batch in batches for row in batch]
             self.assertEqual(len(all_rows), len(COORDS_DATA))
 

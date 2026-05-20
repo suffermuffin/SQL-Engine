@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from .types import SqlRow
 
 
-def to_html(tablename : str, columns : list[str], repr_rows : Sequence[SqlRow], limit : int = 25):
+def to_html(tablename : str, columns : list[str], repr_rows : Sequence[SqlRow], limit : int = 25) -> str:
 
     tablestyle     = "<table style=\"border-collapse: collapse; font-size: 14px;\">"
     tablenamestyle = "<caption style=\"font-size: 18px; font-weight: bold;\">{}</caption>"
@@ -58,9 +58,8 @@ def to_html(tablename : str, columns : list[str], repr_rows : Sequence[SqlRow], 
     return "".join(html)
 
 
-def to_csv(builder : Select | Where[Select] | SqlTableMixin, path : str):
+def to_csv(builder : Select | Where[Select] | SqlTableMixin, path : str) -> None:
     
-    # circular dependency
     from ..sqltable  import SqlTableMixin
     from .statements import Where
 

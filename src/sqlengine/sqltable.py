@@ -61,7 +61,7 @@ class SqlTableMixin:
         self._write_db(force_drop)
         
     
-    def _validate_attributes(self):
+    def _validate_attributes(self) -> None:
 
         if not hasattr(self, "__tablename__") or self.__tablename__ is None:
             self.__tablename__ = self.__class__.__name__
@@ -89,7 +89,7 @@ class SqlTableMixin:
             raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
         
 
-    def _register_types(self):
+    def _register_types(self) -> None:
         
         resolved : list[str] = []
         assert_register_types = False
@@ -121,7 +121,7 @@ class SqlTableMixin:
         self.__types_sql__ = resolved
         
 
-    def _write_db(self, force_drop : bool):
+    def _write_db(self, force_drop : bool) -> None:
 
         if self.database == ":memory:":
             logger.debug(f"{self.tablename}: Using in-memory database")
@@ -138,13 +138,33 @@ class SqlTableMixin:
 
         self.create_table()
 
+    
+    def create_table(self) -> None:
+        """ Create table if not exists """
+       
+        query = sql.create_table(
+            self.tablename, self.columns, 
+            self.types_sql, self.primary
+        )
+
+        self.execute(query)
+
+
+    def drop_table(self, confirm : bool = False) -> None:
+        """ Drops table if it exists. """
+        
+        if not confirm:
+            raise ValueError("To drop table you have to pass `confirm=True`")
+        
+        self.execute(sql.drop_table(self.tablename))
+
 
     def connect(self) -> sqlite3.Connection:
         """ Shortcut to sqlite3 connection context manager """
         return sqlite3.connect(self.database, **self.connection_params)
     
 
-    def open_connection(self):
+    def open_connection(self) -> None:
         """ Opens unmanaged transaction """
         if self.in_transaction():
             raise RuntimeError("Can't re-open existing connection")
@@ -153,7 +173,7 @@ class SqlTableMixin:
         self._trans_cursor = self._trans.cursor()
 
     
-    def close_connection(self):
+    def close_connection(self) -> None:
         """ Closes unmanaged transaction """
         if not self.in_transaction():
             return
@@ -167,14 +187,14 @@ class SqlTableMixin:
         del(self._trans)
 
 
-    def commit(self):
+    def commit(self) -> None:
         if not self.in_transaction():
             raise RuntimeError("Can't commit outside transaction mode")
         
         self._trans.commit()
 
 
-    def rollback(self):
+    def rollback(self) -> None:
         if not self.in_transaction():
             raise RuntimeError("Can't rollback outside transaction mode")
         
@@ -243,6 +263,7 @@ class SqlTableMixin:
             cursor.execute(query, args)
             return getattr(cursor, method)()
 
+    
     @overload    
     def _execute(self, query : str, args : tuple[SqlValue, ...], method : Literal["execute"]) -> None: ...
     @overload
@@ -292,26 +313,6 @@ class SqlTableMixin:
             *args (list[tuple[SqlValue, ...]]): Arguments to the execution
         """
         return self._execute(query, args, method="executemany")
-    
-    
-    def create_table(self) -> None:
-        """ Create table if not exists """
-       
-        query = sql.create_table(
-            self.tablename, self.columns, 
-            self.types_sql, self.primary
-        )
-
-        self.execute(query)
-
-
-    def drop_table(self, confirm : bool = False) -> None:
-        """ Drops table if it exists. """
-        
-        if not confirm:
-            raise ValueError("To drop table you have to pass `confirm=True`")
-        
-        self.execute(sql.drop_table(self.tablename))
 
 
     def fetchone(self, query : str, *args : SqlValue) -> SqlRow:
@@ -432,7 +433,7 @@ class SqlTableMixin:
         )
     
 
-    def _repr_html_(self):
+    def _repr_html_(self) -> str | None:
 
         if self.database == ":memory:":
             return None

@@ -43,7 +43,7 @@ def bulk_placeholder(n_values : int, n_rows : int) -> str:
     return f"{format_list([place_holder]*n_rows, False)}"
 
 
-def insert(tablename : str, columns : list[str], values : str):
+def insert(tablename : str, columns : list[str], values : str) -> str:
     """ Creates insert query """
     return f"INSERT INTO {tablename} {format_list(columns)} VALUES {values};"
 

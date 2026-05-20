@@ -13,50 +13,63 @@ from .repr  import to_html
 
 class Where[T : Statement]:
     """ Where clause build helper """
+    
+    
     def __init__(self, statement : T):
         
         self._statement = statement
+        
+        self._clause   : list[str] = []
+        self._args     : list[SqlValue] = []
 
-        self.clause   : list[str] = []
-        self.args     : list[SqlValue] = []
 
     @property
     def then(self) -> T:
         """ Returns upper statement object """
         return self._statement
     
+    
     def __call__(self, where_clasuse : str, *args : SqlValue) -> Self:
         """ Shortcut to custom where clause """
         return self.custom(where_clasuse, *args)
 
+    
     def op(self, column : str, value : SqlValue, operator : str) -> Self:
-        self.clause.append(f"{column} {operator} ?")
-        self.args.append(value)
+        self._clause.append(f"{column} {operator} ?")
+        self._args.append(value)
         return self
 
+    
     def join(self, lop : str = "AND") -> Self:
         """ Joins previous expression via logical operator `lop` """
-        joined = f" {lop} ".join(self.clause)
-        self.clause = [f"({joined})"]
+        joined = f" {lop} ".join(self._clause)
+        self._clause = [f"({joined})"]
         return self
 
+    
     def eq(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "=")
 
+    
     def neq(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "!=")
+    
     
     def gt(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, ">")
     
+    
     def gte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, ">=")
+    
     
     def lt(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<")
     
+    
     def lte(self, column : str, value : SqlValue) -> Self:
         return self.op(column, value, "<=")
+    
     
     def like(self, column : str, pattern : str) -> Self:
         """ 
@@ -65,56 +78,67 @@ class Where[T : Statement]:
         """
         return self.op(column, pattern, "LIKE")
     
+    
     def is_null(self, column : str) -> Self:
-        self.clause.append(f"{column} IS NULL")
+        self._clause.append(f"{column} IS NULL")
         return self
+    
     
     def inverted(self) -> Self:
         """ Invert last where clause with NOT """
-        self.clause[-1] = f"NOT ({self.clause[-1]})"
+        self._clause[-1] = f"NOT ({self._clause[-1]})"
         return self
+    
     
     def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
         if isinstance(values, str):
             raise ValueError("Got string as sequence of values in in_, expected tuple/list/etc...")
         placeholder = sql.values_placeholder(len(values))
-        self.clause.append(f"{column} IN {placeholder}")
-        self.args.extend(values)
+        self._clause.append(f"{column} IN {placeholder}")
+        self._args.extend(values)
         return self
     
+    
     def between(self, column : str, start : SqlValue, stop : SqlValue) -> Self:
-        self.clause.append(f"{column} BETWEEN ? AND ?")
-        self.args.extend((start, stop))
+        self._clause.append(f"{column} BETWEEN ? AND ?")
+        self._args.extend((start, stop))
         return self
+    
     
     def custom(self, where_clause : str, *args : SqlValue) -> Self:
         """ Add custom where clause (e.g. `where.custom("Age > ? AND Age != ?", 10, 25)`) """
-        self.clause.append(where_clause)
-        self.args.extend(args)
+        self._clause.append(where_clause)
+        self._args.extend(args)
         return self
 
+    
     def build(self, lop : str = "AND") -> tuple[str, tuple[SqlValue, ...]]:
-        where_clause = f" {lop} ".join(self.clause).strip()
-        args = tuple(self.args)
+        where_clause = f" {lop} ".join(self._clause).strip()
+        args = tuple(self._args)
         return where_clause, args
     
+    
     def reset(self) -> None:
-        self.args = []
-        self.clause = []
+        self._args = []
+        self._clause = []
 
+    
     def __str__(self) -> str:
         return self._statement.__str__()
 
+    
     def __repr__(self) -> str:
         return self._statement.__repr__()
 
+    
     def _repr_html_(self) -> str | None:
         if isinstance(self._statement, Select):
             return self._statement._repr_html_()
         return None
     
+    
     def __len__(self) -> int:
-        return len(self.args)
+        return len(self._args)
 
 
 class Statement(ABC):
@@ -186,6 +210,7 @@ class Statement(ABC):
 
 class MutationalStatement(Statement, ABC):
 
+    
     def execute(self) -> None:
         query, args = self.build()
         self._table.execute(query, *args)
@@ -331,8 +356,7 @@ class Select(Statement):
 
 class Delete(MutationalStatement):
 
-    __command__ = "DELETE"
-
+    
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
@@ -347,7 +371,6 @@ class Delete(MutationalStatement):
 
 class Update(MutationalStatement):
 
-    __command__ = "UPDATE"
 
     def __init__(self, table : SqlTableMixin) -> None:
         super().__init__(table)

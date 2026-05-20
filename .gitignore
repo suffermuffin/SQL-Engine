@@ -4,5 +4,3 @@ sqlengine.egg-info
 *.db
 /temp/*
 /dist/*
-
-uv.lock

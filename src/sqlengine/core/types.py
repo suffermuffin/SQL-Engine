@@ -1,6 +1,6 @@
 import sqlite3
 from typing import Protocol, Self, TypeGuard, TypedDict, Any
-
+from types import UnionType
 
 class CustomType(Protocol):
     @classmethod
@@ -24,12 +24,20 @@ class Schema(TypedDict):
     primary   : list[str]
 
 
+class Primary[T]:
+    __slots__ = ()
+
+
 # https://docs.python.org/3/library/sqlite3.html#sqlite-and-python-types
-_TYPES_MAP : dict[type, str] = {
-    int     : "INTEGER",
-    float   : "REAL",
-    str     : "TEXT",
-    bytes   : "BLOB",
+_TYPES_MAP : dict[type | UnionType, str] = {
+    int     : "INTEGER NOT NULL",
+    float   : "REAL NOT NULL",
+    str     : "TEXT NOT NULL",
+    bytes   : "BLOB NOT NULL",
+    None | int   : "INTEGER",
+    None | float : "REAL",
+    None | str   : "TEXT",
+    None | bytes : "BLOB",
 }
 
 

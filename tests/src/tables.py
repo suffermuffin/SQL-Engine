@@ -1,4 +1,4 @@
-from sqlengine import SqlTableMixin, Schema
+from sqlengine import SqlTableMixin, Schema, Primary
 
 
 class Point:
@@ -28,10 +28,12 @@ class Employees(SqlTableMixin):
 
 class Coordinates(SqlTableMixin):
 
-    __columns__ = ["ID", "name", "coords", "temp"]
-    __types__   = ['INTEGER', 'TEXT', Point, 'REAL']
-    __primary__ = ["ID"]
+    ID     : Primary[int]
+    name   : str | None
+    coords : Point
+    temp   : float
 
+    _my_local_params : dict
 
 
 coord_schema : Schema = {

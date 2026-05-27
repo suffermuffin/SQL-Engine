@@ -2,13 +2,15 @@ import logging
 import os
 import sqlite3
 
-from typing import Sequence, Literal, Any, overload
+from typing import Sequence, Literal, Any
+from typing import get_origin, get_args, overload, get_type_hints
 
 from .core import sqlgen as sql
 from .core.repr import to_html
 
 from .core import ConnectionManager, Select, Update, Delete
-from .core.types import SqlRow, SqlValue, SqlType, Schema
+from .core.types import SqlRow, SqlValue, SqlType
+from .core.types import Schema, Primary
 from .core.types import register_resolve_types
 
 logger = logging.getLogger("sqlengine")
@@ -58,6 +60,39 @@ class SqlTableMixin:
         self.__types_sql__       = resolved_types
 
         self._write_db(force_drop)
+
+    
+    def __init_subclass__(cls):
+
+        if any(
+            hasattr(cls, attr)
+            for attr in ("__columns__", "__primary__", "__types__")
+        ):
+            return
+
+        annotations = get_type_hints(cls)
+        
+        columns = []
+        types   = []
+        primaries = []
+
+        for name, type_ in annotations.items():
+            if name.startswith("_") or name.endswith("_"):
+                continue
+            
+            columns.append(name)
+            
+            if get_origin(type_) == Primary:
+                types.append(get_args(type_)[0])
+                primaries.append(name)
+                continue
+
+            types.append(type_)
+            
+        cls.__columns__ = columns
+        cls.__types__   = types
+        cls.__primary__ = primaries
+        return
 
 
     def _validate_attributes(self) -> None:

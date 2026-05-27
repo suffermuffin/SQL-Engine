@@ -40,7 +40,7 @@ def values_placeholder(n_values : int) -> str:
 def bulk_placeholder(n_values : int, n_rows : int) -> str:
     """ Creates placeholders `(?, ?, ..), (?, ?, ..), ...` for each row """
     place_holder = values_placeholder(n_values)
-    return f"{format_list([place_holder]*n_rows, False)}"
+    return format_list([place_holder]*n_rows, False)
 
 
 def insert(tablename : str, columns : list[str], values : str) -> str:

@@ -80,9 +80,9 @@ class TestSqlTable(unittest.TestCase):
         self.assertFalse(self.empl_table.in_transaction())
         self.assertFalse(self.coord_table_s.in_transaction())
 
-        self.coord_table.close_connection()
-        self.empl_table.close_connection()
-        self.coord_table_s.close_connection()
+        self.coord_table.conn.close()
+        self.empl_table.conn.close()
+        self.coord_table_s.conn.close()
 
         self.coord_table.drop_table(True)
         self.empl_table.drop_table(True)
@@ -100,7 +100,7 @@ class TestSqlTable(unittest.TestCase):
         ]
         table = self.coord_table
         
-        table.open_connection()
+        table.conn.open()
         table.insert_many(COORDS_DATA)
         
         for s in cases:
@@ -115,7 +115,7 @@ class TestSqlTable(unittest.TestCase):
                     self.assertEqual(row_or[2].y, row_re[2].y)
                     self.assertEqual(row_or[3],   row_re[3])
         
-        table.close_connection()
+        table.conn.close()
             
     
     def test_getitem_double_primary(self):
@@ -124,7 +124,7 @@ class TestSqlTable(unittest.TestCase):
 
         cases = [(keys[0], keys[1]) for keys in EMPLOYEES_DATA]
 
-        table.open_connection()
+        table.conn.open()
         table.insert_many(EMPLOYEES_DATA)
 
         for i, (k1, k2) in enumerate(cases):
@@ -135,7 +135,7 @@ class TestSqlTable(unittest.TestCase):
                 for val_re, val_or in zip(re_row, or_row):
                     self.assertEqual(val_re, val_or)
         
-        table.close_connection()
+        table.conn.close()
 
 
 
@@ -316,7 +316,7 @@ class TestSqlTable(unittest.TestCase):
         
         table = self.coord_table
 
-        table.open_connection()
+        table.conn.open()
         table.insert_many(COORDS_DATA)
         
         for idx, _, _, temp in table.select:
@@ -324,7 +324,7 @@ class TestSqlTable(unittest.TestCase):
             table.update.set("temp", temp*2).where.eq("ID", idx).then.execute()
 
         table.commit()
-        table.close_connection()
+        table.conn.close()
 
         rows = table.select.fetchall()
 
@@ -336,7 +336,7 @@ class TestSqlTable(unittest.TestCase):
     
     def test_unmanaged_connection_rollback(self):
         
-        self.coord_table.open_connection()
+        self.coord_table.conn.open()
         self.coord_table.insert_many(COORDS_DATA)
 
         assert len(COORDS_DATA) > 0, "No coords data"
@@ -344,7 +344,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertEqual(len(self.coord_table), len(COORDS_DATA))
 
         self.coord_table.rollback()
-        self.coord_table.close_connection()
+        self.coord_table.conn.close()
 
         self.assertEqual(len(self.coord_table), 0)
 
@@ -356,7 +356,7 @@ class TestSqlTable(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.empl_table.tx_conn
 
-        self.empl_table.open_connection()
+        self.empl_table.conn.open()
 
         conn = self.empl_table.tx_conn
         self.assertIsInstance(conn, sqlite3.Connection)
@@ -364,7 +364,7 @@ class TestSqlTable(unittest.TestCase):
         curs = self.empl_table.tx_cursor
         self.assertIsInstance(curs, sqlite3.Cursor)
 
-        self.empl_table.close_connection()
+        self.empl_table.conn.close()
 
         with self.assertRaises(RuntimeError):
             self.empl_table.tx_cursor
@@ -375,16 +375,16 @@ class TestSqlTable(unittest.TestCase):
     
     def test_unmanaged_attr_manip_edge_case(self):
 
-        self.empl_table.open_connection()
+        self.empl_table.conn.open()
         conn = self.empl_table.tx_conn
         conn.close()
 
         with self.assertRaises(sqlite3.ProgrammingError):
-            self.empl_table.close_connection()
+            self.empl_table.conn.close()
 
         # additional teardown
-        delattr(self.empl_table, "_trans_cursor")
-        delattr(self.empl_table, "_trans")
+        delattr(self.empl_table.conn, "_trans_cursor")
+        delattr(self.empl_table.conn, "_trans")
 
     
     def test_transaction_attr_manip_edge_case(self):
@@ -394,30 +394,30 @@ class TestSqlTable(unittest.TestCase):
                 self.empl_table.tx_conn.close()
 
         # additional teardown
-        delattr(self.empl_table, "_trans_cursor")
-        delattr(self.empl_table, "_trans")
+        delattr(self.empl_table.conn, "_trans_cursor")
+        delattr(self.empl_table.conn, "_trans")
 
 
     def test_transaction_edge_case(self):
         
         with self.assertRaises(RuntimeError):
             with self.empl_table.transaction():
-                self.empl_table.close_connection()
+                self.empl_table.conn.close()
 
         with self.assertRaises(RuntimeError):
             with self.empl_table.transaction():
-                self.empl_table.open_connection()
+                self.empl_table.conn.open()
 
     
     def test_shared_connection_edge_case(self):
         
         with self.assertRaises(RuntimeError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
-                self.coord_table.close_connection()
+                self.coord_table.conn.close()
 
         with self.assertRaises(RuntimeError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
-                self.empl_table.open_connection()
+                self.empl_table.conn.open()
 
 
     def test_transaction_manual_commit(self):
@@ -514,7 +514,7 @@ class TestSqlTable(unittest.TestCase):
     def test_select_statements(self):
         table = schema.table_from_database(CHINOOK_DB, "Customer")
 
-        table.open_connection()
+        table.conn.open()
         
         limit = 15
 
@@ -541,7 +541,7 @@ class TestSqlTable(unittest.TestCase):
                 .limit(50)\
                 .fetchall()
             
-        table.close_connection()
+        table.conn.close()
 
 
     def test_update_statement(self):
@@ -550,8 +550,8 @@ class TestSqlTable(unittest.TestCase):
 
         table = schema.table_from_schema(":memory:", _schema)
         
-        _table.open_connection()
-        table.open_connection()
+        _table.conn.open()
+        table.conn.open()
         
         table.create_table()
 
@@ -562,7 +562,7 @@ class TestSqlTable(unittest.TestCase):
             
             table.commit()
 
-        _table.close_connection()
+        _table.conn.close()
         
         
         with self.subTest("Update cities"):
@@ -580,7 +580,7 @@ class TestSqlTable(unittest.TestCase):
             for row in rows:
                 self.assertEqual(new_city, row[0])
         
-        table.close_connection()
+        table.conn.close()
 
     
     # Generated

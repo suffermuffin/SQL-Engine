@@ -1,6 +1,6 @@
 
 
-# 1. Examples
+# Examples
 
 **and under the hood queries**
 
@@ -22,7 +22,7 @@ class Employees(SqlTableMixin):
 ```
 
 ---
-## 1.1. Instantiate
+## Instantiate
 
 ```py
 # Force table overwrite with `force_drop=True`
@@ -36,7 +36,7 @@ EmployeesDB: CREATE TABLE IF NOT EXISTS EmployeesDB (ID INT, Name TEXT NOT NULL,
 ```
 
 ---
-## 1.2. Insert single row
+## Insert single row
 
 ```py
 table.insert(0, 'John', 'CEO')
@@ -48,7 +48,7 @@ EmployeesDB: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); (0
 ```
 
 ---
-## 1.3. Insert many rows
+## Insert many rows
 
 ```py
 workers  = [(1, 'Boris', 'worker'), (2, 'George', 'worker'), (3, 'Kate', 'worker')]
@@ -61,7 +61,7 @@ EmployeesDB: INSERT INTO EmployeesDB (ID, Name, Occupation) VALUES (?, ?, ?); [(
 ```
 
 ---
-## 1.4. Insert many rows in transaction
+## Insert many rows in transaction
 
 ```py
 batch_size = 2
@@ -86,7 +86,7 @@ EmployeesDB: Transaction finished
 ```
 
 ---
-## 1.5. Query select with specified columns
+## Query select with specified columns
 
 ```py
 table.select('Name', 'ID').where.eq('Occupation', 'CEO').then.fetchone()
@@ -101,7 +101,7 @@ EmployeesDB: SELECT Name, ID FROM EmployeesDB WHERE Occupation = ?; ('CEO',)
 ```
 
 ---
-## 1.6. Query select with multiple where clauses
+## Query select with multiple where clauses
 
 ```py
 table.select.where.eq('Occupation', 'worker').eq('Occupation', 'CEO').join("OR").then.fetchall()
@@ -120,7 +120,7 @@ EmployeesDB: SELECT * FROM EmployeesDB WHERE (Occupation = ? OR Occupation = ?);
 ```
 ---
 
-## 1.7. Select, compare, order and limit
+## Select, compare, order and limit
 ```py
 table.select.where.in_('Occupation', ('seller', 'worker')).then.order_by("ID", ascending=False).limit(5).fetchall()
 
@@ -139,7 +139,7 @@ EmployeesDB: SELECT * FROM EmployeesDB WHERE Occupation IN (?, ?) ORDER BY ID DE
 
 ---
 
-## 1.8. Aggregate
+## Aggregate
 
 ```py
 table.select.where.eq("Occupation", "worker").then.aggregate("COUNT").fetchone()
@@ -153,7 +153,7 @@ EmployeesDB: SELECT COUNT(*) FROM EmployeesDB WHERE Occupation = ?; ('worker',)
 ```
 
 ---
-## 1.9. Delete rows
+## Delete rows
 
 ```py
 table.delete.where.eq('ID', 1).then.execute()
@@ -165,7 +165,7 @@ EmployeesDB: DELETE FROM EmployeesDB WHERE ID = ?; (1,)
 ```
 
 ---
-## 1.10. Select all
+## Select all
 
 ```py
 table.select.fetchall()
@@ -185,7 +185,7 @@ table.select.fetchall()
 EmployeesDB: SELECT * FROM EmployeesDB; ()
 ```
 ---
-## 1.11. Create transaction rows batch generator
+## Create transaction rows batch generator
 
 ```py
 import logging
@@ -211,7 +211,7 @@ EmployeesDB: Transaction finished
 ```
 ---
 
-## 1.12. Iterate over multiple tables
+## Iterate over multiple tables
 
 ```py
 

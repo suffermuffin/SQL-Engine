@@ -1,8 +1,8 @@
-# 7. Transactions
+# Transactions
 
 Transactions help you to not spam `execute()` -> `commit()` on a database for each of operations which is computationally heavy.
 
-## 7.1. Transaction per Table
+## Transaction per Table
 
 ```py
 class Homies(SqlTableMixin):
@@ -44,7 +44,7 @@ older_homies
 # ]
 ```
 
-## 7.2. Shared Connection
+## Shared Connection
 
 To use multiple databases and tables in the same transaction (spanning either one or multiple databases), you can use `shared_connection` util. `shared_connection` creates connection across one or more databases for multiple tables by manipulating their transaction attributes.
 
@@ -76,7 +76,7 @@ with shared_connection(copy_biggest_table, biggest_table, **biggest_table.connec
 final_shape # -> (9, 3503)
 ```
 
-## 7.3. Manually Managed Connections
+## Manually Managed Connections
 
 You can use manually manged connections with below syntax:
 

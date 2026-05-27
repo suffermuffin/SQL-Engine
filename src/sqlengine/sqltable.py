@@ -79,6 +79,9 @@ class SqlTableMixin:
         if not n_types == n_cols:
             raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
         
+        if len(self.__primary__) < 1:
+            raise AttributeError(f'`__primary__`: Number of primary keys must be at least 1')
+        
         wrong_primaries = [
             prim for prim in self.__primary__ if
             prim not in self.__columns__
@@ -253,6 +256,7 @@ class SqlTableMixin:
         
         if not isinstance(length, int):
             raise ValueError("Unreachable")
+        
         return length
 
     
@@ -269,7 +273,8 @@ class SqlTableMixin:
             
         select = self.select
 
-        if isinstance(key, slice):
+        
+        def resolve_slice(key : slice) -> tuple[int, int, int]:
             
             primary = self.primary[0]
 
@@ -292,6 +297,14 @@ class SqlTableMixin:
 
             if not (isinstance(start, int) and isinstance(stop, int)):
                 raise IndexError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
+            
+            return start, stop, step
+            
+        
+        if isinstance(key, slice):
+            
+            primary = self.primary[0]
+            start, stop, step = resolve_slice(key)
 
             if abs(step) == 1:
                 _start = min(start, stop)
@@ -384,6 +397,7 @@ class SqlTableMixin:
 
     @property
     def conn(self) -> ConnectionManager:
+        """  Access connection manager instance """
         return self._connection_manager
     
 
@@ -399,6 +413,12 @@ class SqlTableMixin:
         return self._connection_manager.tx_cursor
     
 
-    @property # TODO: add setter
+    @property
     def connection_params(self) -> dict[str, Any]:
+        """ Connection parameters used in connection creation """
         return self._connection_manager.connection_params
+
+    
+    @connection_params.setter
+    def connection_params(self, value : dict[str, Any]) -> None:
+        self._connection_manager.connection_params = value

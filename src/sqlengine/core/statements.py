@@ -336,9 +336,8 @@ class Select(Statement):
 
 
     def _resolve_columns(self) -> list[str]:
-        table_cols = self._tableschema["columns"]
         return (
-            table_cols 
+            self._tableschema["columns"] 
             if len(self._columns) == 0 or "*" in self._columns 
             else self._columns
         )

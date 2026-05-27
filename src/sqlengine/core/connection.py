@@ -56,7 +56,12 @@ class ConnectionManager:
     @overload
     def _execute(self, query : str, args : Sequence[SqlRow], method : Literal["executemany"]) -> None: ...
     
-    def _execute(self, query : str, args : tuple[SqlValue, ...] | Sequence[SqlRow] = (), method : Literal["execute", "executemany"] = "execute") -> None:
+    def _execute(
+            self, 
+            query  : str,
+            args   : tuple[SqlValue, ...] | Sequence[SqlRow] = (),
+            method : Literal["execute", "executemany"]       = "execute"
+        ) -> None: 
         """
         Shortcut to connect() -> execute[<many>]() -> commit() for single operations. 
         Can be used in transaction using `transaction()` manager.
@@ -97,7 +102,7 @@ class ConnectionManager:
 
         Args:
             query (str): SQL query to execute on SQLite3 DB
-            *args (list[tuple[SqlValue, ...]]): Arguments to the execution
+            args (list[tuple[SqlValue, ...]]): Arguments to the execution
         """
         return self._execute(query, args, method="executemany")
 

@@ -1,18 +1,14 @@
-from __future__ import annotations
-from typing     import Sequence, Literal, Generator, Self, TYPE_CHECKING
-from abc        import ABC, abstractmethod
-
-if TYPE_CHECKING:
-    from .statements import Statement 
+from typing import Sequence, Literal, Generator, Self
+from abc    import ABC, abstractmethod
 
 from . import sqlgen as sql
 from .connection import ConnectionManager
 
-from .types import SqlValue, SqlRow
+from .types import SqlValue, SqlRow, Schema
 from .repr  import to_html
 
 
-class Where[T : Statement]:
+class Where[T : "Statement"]:
     """ Where clause build helper """
     
     def __init__(self, statement : T):
@@ -146,10 +142,10 @@ class Statement(ABC):
     Statement object that helps you build queries and execute them
     """
 
-    def __init__(self, connection : ConnectionManager) -> None:
+    def __init__(self, connection : ConnectionManager, tableschema : Schema) -> None:
 
-        self._tablename  = connection.schema["tablename"]
-        self._connection = connection
+        self._tableschema = tableschema
+        self._connection  = connection
         self._where: Where[Self] = Where(self)
 
         self._custom_query : str | None = None
@@ -174,7 +170,7 @@ class Statement(ABC):
     
 
     def reset(self) -> None:
-        """ Resets statement to reuse object """
+        """ Reset statement to reuse the object """
         self._where.reset()
         self._custom_query = None
         self._custom_args = ()
@@ -216,8 +212,8 @@ class MutationalStatement(Statement, ABC):
 
 class Select(Statement):
 
-    def __init__(self, connection : ConnectionManager) -> None:
-        super().__init__(connection)
+    def __init__(self, connection : ConnectionManager, tableschema : Schema) -> None:
+        super().__init__(connection, tableschema)
         
         self._columns   : list[str] = []
         self._order_by  : list[str] = []
@@ -327,7 +323,7 @@ class Select(Statement):
         else:
             limit = None
         
-        query = sql.select(self._tablename, columns, where_clause, order, limit)
+        query = sql.select(self._tableschema["tablename"], columns, where_clause, order, limit)
         
         return query, args
     
@@ -340,7 +336,7 @@ class Select(Statement):
 
 
     def _resolve_columns(self) -> list[str]:
-        table_cols = self._connection.schema["columns"]
+        table_cols = self._tableschema["columns"]
         return (
             table_cols 
             if len(self._columns) == 0 or "*" in self._columns 
@@ -357,18 +353,17 @@ class Select(Statement):
         columns   = self._resolve_columns()
         repr_rows = self.fetchmany(limit)
 
-        return to_html(self._tablename, columns, repr_rows, limit=limit-1)
+        return to_html(self._tableschema["tablename"], columns, repr_rows, limit=limit-1)
     
 
 class Delete(MutationalStatement):
 
-    
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
             raise ValueError("Delete statement must have a where clause")
         
-        query = sql.delete_rows(self._tablename, where_clause)
+        query = sql.delete_rows(self._tableschema["tablename"], where_clause)
         return query, args
     
     
@@ -378,8 +373,8 @@ class Delete(MutationalStatement):
 
 class Update(MutationalStatement):
 
-    def __init__(self, connection : ConnectionManager) -> None:
-        super().__init__(connection)
+    def __init__(self, connection : ConnectionManager, tableschema : Schema) -> None:
+        super().__init__(connection, tableschema)
         self._set_clauses : list[str] = []
         self._set_args    : list[SqlValue] = []
 
@@ -397,7 +392,7 @@ class Update(MutationalStatement):
 
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         set_clause = sql.format_list(self._set_clauses, brackets=False)
-        query = f"UPDATE {self._tablename} SET {set_clause} WHERE {where_clause};"
+        query = f"UPDATE {self._tableschema["tablename"]} SET {set_clause} WHERE {where_clause};"
         return query, (*self._set_args, *args)
     
     

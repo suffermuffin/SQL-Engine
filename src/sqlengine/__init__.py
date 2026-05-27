@@ -1,5 +1,5 @@
-from .utils import sqlgen, types
-from .utils.types import Schema
+from .core import sqlgen, types
+from .core.types import Schema
 from .sqltable import SqlTableMixin
 
 __author__  = "suffermuffin"

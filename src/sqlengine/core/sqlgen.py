@@ -4,9 +4,7 @@ from typing import Sequence
 def format_list(items : Sequence | set, brackets : bool = True) -> str:
     """ Formats list into `(item1, item2, ...)` format """
     items_str = ', '.join([str(i) for i in items])
-    if not brackets: 
-        return items_str
-    return f'({items_str})'
+    return f'({items_str})' if brackets else items_str
 
 
 def create_table(

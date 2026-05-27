@@ -4,12 +4,12 @@ import sqlite3
 
 from typing import Sequence, Literal, Any, overload
 
-from .utils            import sqlgen as sql
-from .utils.statements import Select, Update, Delete
-from .utils.repr       import to_html
+from .core import sqlgen as sql
+from .core.repr import to_html
 
-from .utils.connection import ConnectionManager
-from .utils.types import SqlRow, SqlValue, SqlType, Schema
+from .core import ConnectionManager, Select, Update, Delete
+from .core.types import SqlRow, SqlValue, SqlType, Schema
+from .core.types import register_resolve_types
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -47,18 +47,19 @@ class SqlTableMixin:
     __columns__   : list[str]
     __types__     : list[SqlType | str]
     __primary__   : list[str]
-    __types_sql__ : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
         self._validate_attributes()
-        
-        self._connection_manager = ConnectionManager(database, self.schema, **connection_params)
-        self._write_db(database, force_drop)
+        resolved_types, connection_params = register_resolve_types(self.__types__, **connection_params)
 
-        self.database = database
-        
-    
+        self.database            = database
+        self._connection_manager = ConnectionManager(database, **connection_params)
+        self.__types_sql__       = resolved_types
+
+        self._write_db(force_drop)
+
+
     def _validate_attributes(self) -> None:
 
         if not hasattr(self, "__tablename__") or self.__tablename__ is None:
@@ -87,15 +88,15 @@ class SqlTableMixin:
             raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
         
 
-    def _write_db(self, database : str, force_drop : bool) -> None:
+    def _write_db(self, force_drop : bool) -> None:
 
-        if database == ":memory:":
+        if self.database == ":memory:":
             logger.debug(f"{self.tablename}: Using in-memory database")
             return
         
-        if not os.path.exists(database):
-            logger.debug(f'{self.tablename}: {database} does not exist. Creating...')
-            parent_dir = database.removesuffix(os.path.basename(database))
+        if not os.path.exists(self.database):
+            logger.debug(f'{self.tablename}: {self.database} does not exist. Creating...')
+            parent_dir = self.database.removesuffix(os.path.basename(self.database))
             if parent_dir: 
                 os.makedirs(parent_dir, exist_ok=True)
 
@@ -234,6 +235,10 @@ class SqlTableMixin:
         )
     
 
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}(database={self.database}, tablename={self.tablename})"
+    
+
     def _repr_html_(self) -> str | None:
 
         if self.database == ":memory:":
@@ -259,9 +264,8 @@ class SqlTableMixin:
     def __getitem__(self, key : tuple[SqlValue, ...] | SqlValue | slice ) -> SqlRow | list[SqlRow]:
         """ Get row by primary key """
 
-        if len(self.primary) > 1:
-            if (not isinstance(key, tuple)) or (not len(key) == len(self.primary)):
-                raise IndexError("`key` expected to be a tuple of equal leght to `primary` for multi index tables")
+        if len(self.primary) > 1 and not (isinstance(key, tuple) and len(key) == len(self.primary)):
+            raise IndexError("`key` expected to be a tuple of equal leght to `primary` for multi index tables")
             
         select = self.select
 
@@ -287,7 +291,7 @@ class SqlTableMixin:
                 step = key.step
 
             if not (isinstance(start, int) and isinstance(stop, int)):
-                raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
+                raise IndexError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
 
             if abs(step) == 1:
                 _start = min(start, stop)
@@ -315,19 +319,19 @@ class SqlTableMixin:
     @property
     def update(self) -> Update:
         """ UPDATE statement builder and executor """
-        return Update(self.conn)
+        return Update(self.conn, self.schema)
 
     
     @property
     def delete(self) -> Delete:
         """ DELETE statement builder and executor """
-        return Delete(self.conn)
+        return Delete(self.conn, self.schema)
     
 
     @property
     def select(self) -> Select:
         """ SELECT statement builder and fetcher """
-        return Select(self.conn)
+        return Select(self.conn, self.schema)
 
 
     @property
@@ -345,7 +349,7 @@ class SqlTableMixin:
     @property
     def types_sql(self) -> list[str]:
         """ List of table column dtypes converted to SQL native and registered types """
-        return self._connection_manager.__types_sql__ # TODO
+        return self.__types_sql__
 
     
     @property

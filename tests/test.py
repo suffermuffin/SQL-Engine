@@ -6,7 +6,7 @@ import logging
 import sys
 import warnings
 
-from sqlengine       import schema
+from sqlengine       import schema, SqlTableMixin, Primary
 from sqlengine.utils import shared_connection
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
@@ -581,6 +581,103 @@ class TestSqlTable(unittest.TestCase):
                 self.assertEqual(new_city, row[0])
         
         table.conn.close()
+
+    
+    def test_class_declaration(self):
+        
+        with self.subTest("Should raise attr error as of no primaries"):
+            with self.assertRaises(AttributeError):
+                class EdgeCaseTable1(SqlTableMixin):
+                    val : str
+                    key : int
+            
+        
+        with self.subTest("Should raise attr error as N is not declared in columns"):
+            with self.assertRaises(AttributeError):
+                class EdgeCaseTable2(SqlTableMixin):
+                    val : str
+                    key : Primary[int]
+
+                    __primary__ = ['N']
+            
+        
+        with self.subTest("Should raise attr error as of double declaration of columns"):
+            with self.assertRaises(AttributeError):
+                class EdgeCaseTable3(SqlTableMixin):
+                    val : str
+                    key : Primary[int]
+
+                    __columns__ = ["val", "key"]
+                    __types__   = [str, "INTEGER"]
+
+        
+        with self.subTest("Should raise attr error as of double declaration of primaries"):
+            with self.assertRaises(AttributeError):
+                class EdgeCaseTable4(SqlTableMixin):
+                    val : str
+                    key : Primary[int]
+
+                    __primary__ = ["key"]
+
+        
+        with self.subTest("Should work"):
+            class EdgeCaseTable5(SqlTableMixin):
+                
+                __columns__ = ["sql_col1", "sql_col2"]
+                __types__   = ["NVARCHAR(160)", float]
+                __primary__ = ["sql_col1"]
+
+                val : str
+                key : Primary[int]
+
+
+            table = EdgeCaseTable5(TEST_DB, True)
+
+            self.assertEqual(table.types, ["NVARCHAR(160)", float, str, int])
+            
+            with table.transaction():
+                table.insert("sql_col1_value", 1.0, "val_value", 0)
+                row = table['sql_col1_value', 0]
+
+                self.assertEqual(len(row), 4)
+
+                table.drop_table(True)
+
+        
+        with self.subTest("Custom Prime"):
+            
+            from datetime import datetime
+
+            class DateTime(datetime):
+                
+                def to_sql(self) -> str:
+                    return self.strftime("%Y-%m-%d %H:%M")
+
+                @classmethod
+                def from_sql(cls, sql : bytes):
+                    return cls.fromisoformat(sql.decode('utf-8'))
+                
+                def __repr__(self):
+                    return f"DateTime({self.time})"
+
+
+            class ReservationIndex(SqlTableMixin):
+
+                user_id : Primary[int]
+                room_id : Primary[str]
+                time_at : Primary[DateTime]
+                user_name : str | None
+
+
+            table = ReservationIndex(":memory:")
+            time  = DateTime.now()
+            
+            with table.transaction(autocommit=False):
+                
+                table.create_table()
+                table.insert(1, "loft_1", time, None)
+                
+                self.assertEqual(len(table), 1)
 
     
     # Generated

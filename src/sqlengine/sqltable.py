@@ -37,12 +37,24 @@ class SqlTableMixin:
         __primary__ (list[str]): List of primary keys
 
     Examples:
+        >>> from sqlengine import SqlTableMixin, Primary
+        >>>
         >>> class Employees(SqlTableMixin):
         >>>     __columns__   = ["ID", "name", "surname", "salary", "position"]
         >>>     __types__     = [int, str, str, float, "TEXT NOT NULL"]
         >>>     __primary__   = ["ID", "name"]
         >>> 
         >>> table = Employees(":memory:")
+        >>>
+        >>>
+        >>> class Employees(SqlTableMixin):
+        >>>     ID       : Primary[int]
+        >>>     name     : Primary[str]
+        >>>     surname  : str | None
+        >>>     salary   : float | None
+        >>>     position : str
+        >>> 
+        >>> table = Employees("mydb.sqlite3")
     """
 
     __tablename__ : str
@@ -52,7 +64,6 @@ class SqlTableMixin:
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
-        self._validate_attributes()
         resolved_types, connection_params = register_resolve_types(self.__types__, **connection_params)
 
         self.database            = database
@@ -62,10 +73,14 @@ class SqlTableMixin:
         self._write_db(force_drop)
 
     
-    def __init_subclass__(cls):
+    def __init_subclass__(cls) -> None:
 
         annotations = get_type_hints(cls)
         
+        tablename = cls.__tablename__ if \
+            hasattr(cls, "__tablename__") and cls.__tablename__ is not None\
+            else cls.__name__
+
         columns = cls.__columns__ if hasattr(cls, "__columns__") else []
         types   = cls.__types__   if hasattr(cls, "__types__")   else []
         primary = cls.__primary__ if hasattr(cls, "__primary__") else []
@@ -74,45 +89,58 @@ class SqlTableMixin:
             if name.startswith("_") or name.endswith("_"):
                 continue
             
+            if name in columns:
+                raise AttributeError(f"Annotated column `{name}` is already in __columns__")
+            
             columns.append(name)
             
-            if get_origin(type_) == Primary:
-                types.append(get_args(type_)[0])
-                primary.append(name)
+            if not get_origin(type_) == Primary:
+                types.append(type_)
                 continue
 
-            types.append(type_)
+            if name in primary:
+                raise AttributeError(f"Annotated primary column `{name}` is already in __primary__")
             
+            primary_type = get_args(type_)[0]
+
+            if not primary_type:
+                raise AttributeError("Primary type was declared without the type. Usage: `my_column : Primary[T]`, where T is desired type")
+            
+            types.append(primary_type)
+            primary.append(name)
+            
+        
+        cls.__tablename__ = tablename
+
         cls.__columns__ = columns
         cls.__types__   = types
         cls.__primary__ = primary
+        cls._validate_attributes()
 
 
-    def _validate_attributes(self) -> None:
-
-        if not hasattr(self, "__tablename__") or self.__tablename__ is None:
-            self.__tablename__ = self.__class__.__name__
+    @classmethod
+    def _validate_attributes(cls) -> None:
 
         missing_attrs = [
             attr for attr in 
-            [ "__columns__", "__types__", "__primary__"] 
-            if not hasattr(self, attr)
+            [ "__columns__", "__types__", "__primary__", "__tablename__"]
+            if not hasattr(cls, attr)
         ]
 
         if missing_attrs:
-            raise AttributeError(f'{self.tablename} is missing attributes: {missing_attrs}')
+            raise AttributeError(f'{cls.__name__} is missing attributes: {missing_attrs}')
         
-        n_types, n_cols = len(self.__types__), len(self.__columns__)
+        n_types, n_cols = len(cls.__types__), len(cls.__columns__)
 
         if not n_types == n_cols:
             raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
         
-        if len(self.__primary__) < 1:
+        if len(cls.__primary__) < 1:
             raise AttributeError(f'`__primary__`: Number of primary keys must be at least 1')
         
         wrong_primaries = [
-            prim for prim in self.__primary__ if
-            prim not in self.__columns__
+            prim for prim in cls.__primary__ if
+            prim not in cls.__columns__
         ]
 
         if wrong_primaries:
@@ -169,7 +197,6 @@ class SqlTableMixin:
             >>> with table.transaction():
             >>>     for idx, age in table.select("ID", "Age"):
             >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
-            >>>     print(table.select)
         """
         
         return self._connection_manager.transaction(autocommit)

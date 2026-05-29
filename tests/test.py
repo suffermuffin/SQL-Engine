@@ -679,6 +679,10 @@ class TestSqlTable(unittest.TestCase):
                 
                 self.assertEqual(len(table), 1)
 
+                dt = table.select("time_at").fetchone()[0]
+                
+                self.assertIsInstance(dt, DateTime)
+
     
     # Generated
     

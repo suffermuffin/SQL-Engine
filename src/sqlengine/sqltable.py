@@ -64,17 +64,11 @@ class SqlTableMixin:
     
     def __init_subclass__(cls):
 
-        if any(
-            hasattr(cls, attr)
-            for attr in ("__columns__", "__primary__", "__types__")
-        ):
-            return
-
         annotations = get_type_hints(cls)
         
-        columns = []
-        types   = []
-        primaries = []
+        columns = cls.__columns__ if hasattr(cls, "__columns__") else []
+        types   = cls.__types__   if hasattr(cls, "__types__")   else []
+        primary = cls.__primary__ if hasattr(cls, "__primary__") else []
 
         for name, type_ in annotations.items():
             if name.startswith("_") or name.endswith("_"):
@@ -84,15 +78,14 @@ class SqlTableMixin:
             
             if get_origin(type_) == Primary:
                 types.append(get_args(type_)[0])
-                primaries.append(name)
+                primary.append(name)
                 continue
 
             types.append(type_)
             
         cls.__columns__ = columns
         cls.__types__   = types
-        cls.__primary__ = primaries
-        return
+        cls.__primary__ = primary
 
 
     def _validate_attributes(self) -> None:

@@ -21,14 +21,19 @@ class Point:
 class Employees(SqlTableMixin):
 
     __tablename__ = "MyDB"
-    __columns__   = ["ID", "name", "surname", "salary", "position"]
-    __types__     = [int, str, str, float, "TEXT NOT NULL"]
-    __primary__   = ["ID", "name"]
+
+    ID       : Primary[int]
+    name     : Primary[str]
+    surname  : str | None
+    salary   : float
+    position : str
 
 
 class Coordinates(SqlTableMixin):
 
-    ID     : Primary[int]
+    __primary__   = ["ID"]
+
+    ID     : int
     name   : str | None
     coords : Point
     temp   : float

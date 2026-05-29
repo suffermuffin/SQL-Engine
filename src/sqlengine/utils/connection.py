@@ -1,9 +1,12 @@
-import sqlite3
 import logging
 import os
+import sqlite3
 
 from contextlib import contextmanager
+
 from ..sqltable import SqlTableMixin
+from ..core.connection import ConnectionManager
+
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -30,29 +33,31 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
         >>>             table.update.where.eq("ID", id2).then.set("Salary", temp).execute()
     """
 
-    tables_in_trans = [(f"{table.__class__.__name__=}, {table.tablename=}, {table.database=}") for table in args if table.in_transaction()]
+    tables_in_trans = [
+        str(table) for table in args if table.in_transaction()
+    ]
     
     if tables_in_trans:
         raise RuntimeError(f"Tables {tables_in_trans} are already in transaction")
     
     unique_databases = set(table.database for table in args)
-    database_map : dict[str, list[SqlTableMixin]] = {}
+    database_map : dict[str, list[ConnectionManager]] = {}
     
     for db in unique_databases:
-        database_map[db] = [table for table in args if table.database == db]
+        database_map[db] = [table.conn for table in args if table.database == db]
 
     connections : list[sqlite3.Connection] = []
 
-    for database, tables in database_map.items():
+    for database, con_managers in database_map.items():
         
         con = sqlite3.connect(database, **connection_params)
         connections.append(con)
         
-        for table in tables:
+        for con_man in con_managers:
             table_cur = con.cursor()
-            setattr(table, "_trans", con)
-            setattr(table, "_trans_cursor", table_cur)
-            table._is_managed_transaction = True
+            setattr(con_man, "_trans", con)
+            setattr(con_man, "_trans_cursor", table_cur)
+            con_man._is_managed_transaction = True
 
     logger.debug(f"Starting shared transaction across {len(database_map)} databases")
     
@@ -76,10 +81,11 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
     finally:
         
         for table in args:
-            table._is_managed_transaction = False
-            table.tx_cursor.close()
-            delattr(table, "_trans_cursor")
-            delattr(table, "_trans")
+            con_man = table.conn
+            con_man._is_managed_transaction = False
+            con_man._trans_cursor.close()
+            delattr(con_man, "_trans_cursor")
+            delattr(con_man, "_trans")
         
         for con in connections:
             con.close()

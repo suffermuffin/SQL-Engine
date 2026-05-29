@@ -1,6 +1,6 @@
 import sqlite3
-from typing import Protocol, Self, TypeGuard, TypedDict
-
+from typing import Protocol, Self, TypeGuard, TypedDict, Any
+from types import UnionType
 
 class CustomType(Protocol):
     @classmethod
@@ -24,12 +24,20 @@ class Schema(TypedDict):
     primary   : list[str]
 
 
+class Primary[T]:
+    __slots__ = ()
+
+
 # https://docs.python.org/3/library/sqlite3.html#sqlite-and-python-types
-_TYPES_MAP : dict[type, str] = {
-    int     : "INTEGER",
-    float   : "REAL",
-    str     : "TEXT",
-    bytes   : "BLOB",
+_TYPES_MAP : dict[type | UnionType, str] = {
+    int     : "INTEGER NOT NULL",
+    float   : "REAL NOT NULL",
+    str     : "TEXT NOT NULL",
+    bytes   : "BLOB NOT NULL",
+    None | int   : "INTEGER",
+    None | float : "REAL",
+    None | str   : "TEXT",
+    None | bytes : "BLOB",
 }
 
 
@@ -63,3 +71,34 @@ def pytype_to_sqltype(type_ : type) -> str:
         raise TypeError(f"{type_} is not natively supported by sqlite3")
     
     return _TYPES_MAP[type_]
+
+
+def register_resolve_types(types : list[SqlType | str], **connection_params) -> tuple[list[str], dict[str, Any]]:
+    """ Converts py types to sql types, registers custom types, resolves type names, updates connection params """
+
+    resolved : list[str] = []
+    assert_register_types = False
+
+    for type_ in types:
+        
+        if isinstance(type_, str):
+            resolved.append(type_)
+            continue
+        
+        if is_custom_type(type_):
+            ctname = type_.__name__.upper()
+            
+            register_type(type_, ctname)
+            resolved.append(ctname)
+            
+            if not assert_register_types:
+                assert_register_types = True
+            continue 
+        
+        sql_type = pytype_to_sqltype(type_)
+        resolved.append(sql_type)
+    
+    if assert_register_types and ("detect_types" not in connection_params):
+        connection_params.update(dict(detect_types=sqlite3.PARSE_DECLTYPES))
+
+    return resolved, connection_params

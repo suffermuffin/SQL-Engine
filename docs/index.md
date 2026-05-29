@@ -7,6 +7,7 @@ Welcome to the documentation of `sqlengine`, a Python library designed to simpli
 1. **Table Declaration**
    - [Overview](table_declaration.md)
    - [Class Declaration](table_declaration.md#class-declaration)
+   - [Class Declaration with Annotation](table_declaration.md#class-declaration-with-annotation)
    - [Schema Declaration](table_declaration.md#schema-declaration)
    - [Table Instantiation](table_declaration.md#table-instantiation)
 
@@ -37,4 +38,4 @@ Welcome to the documentation of `sqlengine`, a Python library designed to simpli
    - [Overview](examples.md)
 
 
-Each section provides detailed information and examples on how to use specific features of `sqlengine`. For more advanced usage, refer to the source code or additional resources provided in the repository.
+Each section provides information and examples on how to use specific features of `sqlengine`. For more advanced usage, refer to the source code or additional resources provided in the repository.

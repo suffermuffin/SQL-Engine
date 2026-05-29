@@ -1,19 +1,15 @@
-from __future__ import annotations
-from typing     import Sequence, Literal, Generator, Self, TYPE_CHECKING
-from abc        import ABC, abstractmethod
-
-if TYPE_CHECKING:
-    from .statements import Statement 
-    from ..sqltable  import SqlTableMixin
+from typing import Sequence, Literal, Generator, Self
+from abc    import ABC, abstractmethod
 
 from . import sqlgen as sql
-from .types import SqlValue, SqlRow
+from .connection import ConnectionManager
+
+from .types import SqlValue, SqlRow, Schema
 from .repr  import to_html
 
 
-class Where[T : Statement]:
+class Where[T : "Statement"]:
     """ Where clause build helper """
-    
     
     def __init__(self, statement : T):
         
@@ -146,11 +142,10 @@ class Statement(ABC):
     Statement object that helps you build queries and execute them
     """
 
-    __command__ : Literal["SELECT", "INSERT", "UPDATE", "DELETE"]
+    def __init__(self, connection : ConnectionManager, tableschema : Schema) -> None:
 
-    def __init__(self, table : SqlTableMixin) -> None:
-
-        self._table = table
+        self._tableschema = tableschema
+        self._connection  = connection
         self._where: Where[Self] = Where(self)
 
         self._custom_query : str | None = None
@@ -175,7 +170,7 @@ class Statement(ABC):
     
 
     def reset(self) -> None:
-        """ Resets statement to reuse object """
+        """ Reset statement to reuse the object """
         self._where.reset()
         self._custom_query = None
         self._custom_args = ()
@@ -209,18 +204,16 @@ class Statement(ABC):
     
 
 class MutationalStatement(Statement, ABC):
-
     
     def execute(self) -> None:
         query, args = self.build()
-        self._table.execute(query, *args)
+        self._connection.execute(query, *args)
 
 
 class Select(Statement):
 
-
-    def __init__(self, table : SqlTableMixin) -> None:
-        super().__init__(table)
+    def __init__(self, connection : ConnectionManager, tableschema : Schema) -> None:
+        super().__init__(connection, tableschema)
         
         self._columns   : list[str] = []
         self._order_by  : list[str] = []
@@ -260,17 +253,17 @@ class Select(Statement):
 
     def fetchone(self) -> SqlRow:
         query, args = self.build()
-        return self._table.fetchone(query, *args)
+        return self._connection.fetchone(query, *args)
         
 
     def fetchmany(self, size : int = 1) -> list[SqlRow]:
         query, args = self.build()
-        return self._table.fetchmany(query, *args, size=size)
+        return self._connection.fetchmany(query, *args, size=size)
 
     
     def fetchall(self) -> list[SqlRow]:
         query, args = self.build()
-        return self._table.fetchall(query, *args)
+        return self._connection.fetchall(query, *args)
     
 
     def fetchmany_iterator(self, batch_size: int) -> Generator[list[SqlRow], None, None]:
@@ -286,13 +279,13 @@ class Select(Statement):
             >>>     for batch in table.select.where.gt("Age", 30).then.fetchmany_iterator(1000):
             >>>         process_batch(batch)
         """
-        if not self._table.in_transaction():
+        if not self._connection.in_transaction():
             raise RuntimeError("To use the `fetchall_iterator()` method you have \
                     to keep open the transaction of the table with `transaction()` manager")
         
         query, exec_args = self.build()
 
-        iter_cursor = self._table.tx_conn.cursor()
+        iter_cursor = self._connection.tx_conn.cursor()
         iter_cursor.execute(query, exec_args)
 
         while batch := iter_cursor.fetchmany(batch_size):
@@ -302,13 +295,13 @@ class Select(Statement):
     def __iter__(self) -> Generator[SqlRow, None, None]:
         """ Select statement rows iterator """
         
-        if not self._table.in_transaction():
+        if not self._connection.in_transaction():
             raise RuntimeError("To use the __iter__ method you have \
                 to keep open the transaction of the table with `transaction()` manager")
         
         query, exec_args = self.build()
         
-        iter_cursor = self._table.tx_conn.cursor()
+        iter_cursor = self._connection.tx_conn.cursor()
         iter_cursor.execute(query, exec_args)
 
         while row := iter_cursor.fetchone(): 
@@ -330,7 +323,7 @@ class Select(Statement):
         else:
             limit = None
         
-        query = sql.select(self._table.tablename, columns, where_clause, order, limit)
+        query = sql.select(self._tableschema["tablename"], columns, where_clause, order, limit)
         
         return query, args
     
@@ -342,28 +335,36 @@ class Select(Statement):
         self._limit     = None
 
 
+    def _resolve_columns(self) -> list[str]:
+        return (
+            self._tableschema["columns"] 
+            if len(self._columns) == 0 or "*" in self._columns 
+            else self._columns
+        )
+
+
     def _repr_html_(self) -> str | None:
         
         if self._aggregate:
             return None
         
         limit     = 26
-        columns   = self._table.columns if len(self._columns) == 0 or "*" in self._columns else self._columns
+        columns   = self._resolve_columns()
         repr_rows = self.fetchmany(limit)
 
-        return to_html(self._table.tablename, columns, repr_rows, limit=limit-1)
+        return to_html(self._tableschema["tablename"], columns, repr_rows, limit=limit-1)
     
 
 class Delete(MutationalStatement):
 
-    
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
             raise ValueError("Delete statement must have a where clause")
         
-        query = sql.delete_rows(self._table.tablename, where_clause)
+        query = sql.delete_rows(self._tableschema["tablename"], where_clause)
         return query, args
+    
     
     def _reset(self) -> None:
         pass
@@ -371,9 +372,8 @@ class Delete(MutationalStatement):
 
 class Update(MutationalStatement):
 
-
-    def __init__(self, table : SqlTableMixin) -> None:
-        super().__init__(table)
+    def __init__(self, connection : ConnectionManager, tableschema : Schema) -> None:
+        super().__init__(connection, tableschema)
         self._set_clauses : list[str] = []
         self._set_args    : list[SqlValue] = []
 
@@ -391,7 +391,7 @@ class Update(MutationalStatement):
 
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         set_clause = sql.format_list(self._set_clauses, brackets=False)
-        query = f"UPDATE {self._table.tablename} SET {set_clause} WHERE {where_clause};"
+        query = f"UPDATE {self._tableschema["tablename"]} SET {set_clause} WHERE {where_clause};"
         return query, (*self._set_args, *args)
     
     

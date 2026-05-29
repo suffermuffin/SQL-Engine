@@ -1,12 +1,5 @@
-from __future__ import annotations
 from html import escape
-from typing import Sequence, TYPE_CHECKING
-
-import csv
-
-if TYPE_CHECKING:
-    from .statements import Select, Where
-    from ..sqltable  import SqlTableMixin
+from typing import Sequence
 
 from .types import SqlRow
 
@@ -57,25 +50,3 @@ def to_html(tablename : str, columns : list[str], repr_rows : Sequence[SqlRow], 
 
     return "".join(html)
 
-
-def to_csv(builder : Select | Where[Select] | SqlTableMixin, path : str) -> None:
-    
-    from ..sqltable  import SqlTableMixin
-    from .statements import Where
-
-    match builder:
-        case Where():
-            builder = builder.then
-        case SqlTableMixin():
-            builder = builder.select
-
-    if builder._aggregate:
-        raise AssertionError("Aggregated queries are not supported")
-    
-    columns   = builder._table.columns if len(builder._columns) == 0 or "*" in builder._columns else builder._columns
-    repr_rows = builder.fetchall()
-
-    with open(path, 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(columns)
-        writer.writerows(repr_rows)

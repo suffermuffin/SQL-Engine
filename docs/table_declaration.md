@@ -24,39 +24,106 @@ __primary__ : list[str]
 
 ```
 
-There are a couple of ways to declare your table.
-
 ## Class Declaration
 
-One way is to use inheritance from `SqlTableMixin` with sql-native types declaration:
+There are a couple of ways to declare your table. One way is to use the inheritance from `SqlTableMixin` with sql-native types declaration:
 
 ```py
 from sqlengine import SqlTableMixin
 
-class EmployeesA(SqlTableMixin):
+class Employees(SqlTableMixin):
 
     __tablename__ = "Employees"
     __columns__   = ["ID", "name", "surname", "salary", "position"]
-    __types__     = ["INTEGER", "TEXT", "TEXT", "REAL", "TEXT"]
+    __types__     = ["INTEGER", "NVARCHAR(160)", "TEXT", "REAL", "TEXT"]
     __primary__   = ["ID", "name"]
 
 ```
 
-or with python types if more convenient:
+or with python types. It's also possible to combine with sql-native types strings:
 
 ```py
-class EmployeesA(SqlTableMixin):
+class Employees(SqlTableMixin):
 
     __tablename__ = "Employees"
     __columns__   = ["ID", "name", "surname", "salary", "position"]
-    __types__     = [int, str, str, float, str]
+    __types__     = [int, "NVARCHAR(160)", str, float, str]
     __primary__   = ["ID", "name"]
 
 ```
+
+## Class Declaration with Annotation
+
+The most convenient way is to use annotations to declare all the columns, primary keys and types.
+
+```py
+from sqlengine import SqlTableMixin, Primary
+
+class Employees(SqlTableMixin):
+
+    __tablename__ = "Employees"
+
+    ID       : Primary[int]
+    name     : Primary[str]
+    surname  : str | None
+    salary   : float
+    position : str
+
+```
+
+You may combine both of the above ways in a flexible manner, but there are some rules:
+
+ - Dunder attributes are declared first and annotated ones are appended to them. It's important as you will have to insert arguments in the correct order.
+ - If you declare same columns and/or primary keys both via annotations and dunders, an AttributeError will be raised.
+ - Table must have at least 1 primary column
+ - All declared primary keys must be present among the columns in either way
+
+Here are some quick examples of possible combinations:
+
+```py
+# If you don't feel like marking each primary column
+# with `Primary[T]` annotation, you may still use
+# __primary__ dunder attribute
+
+from sqlengine import SqlTableMixin
+
+class Employees(SqlTableMixin):
+
+    __primary__ = ["ID", "name"]
+
+    ID       : int
+    name     : str
+    surname  : str | None
+    salary   : float
+    position : str
+
+```
+
+```py
+# Here, the "name" column will be used first in
+# insert methods unlike the above examples
+# where the first one was `ID`
+
+from sqlengine import SqlTableMixin, Primary
+
+class Employees(SqlTableMixin):
+
+    __columns__ = ["name"]
+    __types__   = ["NVARCHAR(160)"]
+    __primary__ = ["name"]
+
+    ID       : Primary[int]
+    surname  : str | None
+    salary   : float
+    position : str
+
+```
+
+Note that IDE will suggest you your own annotations when using class object, but in reality they do not exist.
 
 ## Schema Declaration
 
-The other one is to use schemas:
+The other way to declare a table is to use schemas:
 
 ```py
 from sqlengine import Schema

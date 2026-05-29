@@ -21,7 +21,7 @@ class Point:
     
 ```
 
-Then to use this type in table - declare it in `__types__` attribute
+Then to use this type in table - declare it in `__types__` attribute or via annotation
 
 ```py
 class Coordinates(SqlTableMixin):
@@ -46,4 +46,40 @@ table.upsert(0, "Kazahstan", Point(43.2380, 76.8829), 14)
 point = table.select("coords").where.eq("ID", 0).then.fetchone()[0]
 
 isinstance(point, Point) # -> True
+```
+
+Another example uses inheritance to modify existing type to be compatible with the protocol:
+
+```py
+from datetime import datetime
+from sqlengine import SqlTableMixin, Primary
+
+class DateTime(datetime):
+    
+    def to_sql(self) -> str:
+        return self.strftime("%Y-%m-%d %H:%M")
+
+    @classmethod
+    def from_sql(cls, sql : bytes):
+        return cls.fromisoformat(sql.decode('utf-8'))
+    
+    def __repr__(self):
+        return f"DateTime({self.time})"
+
+
+class ReservationIndex(SqlTableMixin):
+
+    user_id : Primary[int]
+    room_id : Primary[str]
+    time_at : Primary[DateTime]
+    user_name : str | None
+
+
+table = ReservationIndex("temp/data.db")
+
+# uses `datetime` classmethod to
+# create a `DateTime` object that
+# is compatible with sqlite3
+time = DateTime.now()
+table.insert(1, "loft_1", time, None)
 ```

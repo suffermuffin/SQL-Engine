@@ -58,9 +58,13 @@ In case of multiple values in `__primary__` you have to call with tuple key in o
 ```py
 class Employees(SqlTableMixin):
 
-    __columns__   = ["ID", "name", "surname", "salary", "position"]
-    __types__     = [int, str, str, float, "TEXT NOT NULL"]
-    __primary__   = ["ID", "name"]
+    __tablename__ = "Employees"
+
+    ID       : Primary[int]
+    name     : Primary[str]
+    surname  : str | None
+    salary   : float
+    position : str
 
 table = Employees("temp/data.db", force_drop=True)
 

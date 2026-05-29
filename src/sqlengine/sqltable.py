@@ -2,15 +2,16 @@ import logging
 import os
 import sqlite3
 
-from contextlib import contextmanager
-from typing     import Sequence, Literal, overload
+from typing import Sequence, Literal, Any
+from typing import get_origin, get_args, overload, get_type_hints
 
-from .utils            import sqlgen as sql
-from .utils.statements import Select, Update, Delete
-from .utils.repr       import to_html
+from .core import sqlgen as sql
+from .core.repr import to_html
 
-from .utils.types import SqlRow, SqlValue, SqlType, Schema
-from .utils.types import register_type, is_custom_type, pytype_to_sqltype
+from .core import ConnectionManager, Select, Update, Delete
+from .core.types import SqlRow, SqlValue, SqlType
+from .core.types import Schema, Primary
+from .core.types import register_resolve_types
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -36,89 +37,114 @@ class SqlTableMixin:
         __primary__ (list[str]): List of primary keys
 
     Examples:
+        >>> from sqlengine import SqlTableMixin, Primary
+        >>>
         >>> class Employees(SqlTableMixin):
         >>>     __columns__   = ["ID", "name", "surname", "salary", "position"]
         >>>     __types__     = [int, str, str, float, "TEXT NOT NULL"]
         >>>     __primary__   = ["ID", "name"]
         >>> 
         >>> table = Employees(":memory:")
+        >>>
+        >>>
+        >>> class Employees(SqlTableMixin):
+        >>>     ID       : Primary[int]
+        >>>     name     : Primary[str]
+        >>>     surname  : str | None
+        >>>     salary   : float | None
+        >>>     position : str
+        >>> 
+        >>> table = Employees("mydb.sqlite3")
     """
 
     __tablename__ : str
     __columns__   : list[str]
     __types__     : list[SqlType | str]
     __primary__   : list[str]
-    __types_sql__ : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
-        self.database = database
-        self.connection_params = connection_params
-        self._is_managed_transaction = False
+        resolved_types, connection_params = register_resolve_types(self.__types__, **connection_params)
 
-        self._validate_attributes()
-        self._register_types()
+        self.database            = database
+        self._connection_manager = ConnectionManager(database, **connection_params)
+        self.__types_sql__       = resolved_types
+
         self._write_db(force_drop)
-        
-    
-    def _validate_attributes(self) -> None:
 
-        if not hasattr(self, "__tablename__") or self.__tablename__ is None:
-            self.__tablename__ = self.__class__.__name__
+    
+    def __init_subclass__(cls) -> None:
+
+        annotations = get_type_hints(cls)
+        
+        tablename = cls.__tablename__ if \
+            hasattr(cls, "__tablename__") and cls.__tablename__ is not None\
+            else cls.__name__
+
+        columns = cls.__columns__ if hasattr(cls, "__columns__") else []
+        types   = cls.__types__   if hasattr(cls, "__types__")   else []
+        primary = cls.__primary__ if hasattr(cls, "__primary__") else []
+
+        for name, type_ in annotations.items():
+            if name.startswith("_") or name.endswith("_"):
+                continue
+            
+            if name in columns:
+                raise AttributeError(f"Annotated column `{name}` is already in __columns__")
+            
+            columns.append(name)
+            
+            if not get_origin(type_) == Primary:
+                types.append(type_)
+                continue
+
+            if name in primary:
+                raise AttributeError(f"Annotated primary column `{name}` is already in __primary__")
+            
+            primary_type = get_args(type_)[0]
+
+            if not primary_type:
+                raise AttributeError("Primary type was declared without the type. Usage: `my_column : Primary[T]`, where T is desired type")
+            
+            types.append(primary_type)
+            primary.append(name)
+            
+        
+        cls.__tablename__ = tablename
+
+        cls.__columns__ = columns
+        cls.__types__   = types
+        cls.__primary__ = primary
+        cls._validate_attributes()
+
+
+    @classmethod
+    def _validate_attributes(cls) -> None:
 
         missing_attrs = [
             attr for attr in 
-            [ "__columns__", "__types__", "__primary__"] 
-            if not hasattr(self, attr)
+            [ "__columns__", "__types__", "__primary__", "__tablename__"]
+            if not hasattr(cls, attr)
         ]
 
         if missing_attrs:
-            raise AttributeError(f'{self.tablename} is missing attributes: {missing_attrs}')
+            raise AttributeError(f'{cls.__name__} is missing attributes: {missing_attrs}')
         
-        n_types, n_cols = len(self.__types__), len(self.__columns__)
+        n_types, n_cols = len(cls.__types__), len(cls.__columns__)
 
         if not n_types == n_cols:
             raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
         
+        if len(cls.__primary__) < 1:
+            raise AttributeError(f'`__primary__`: Number of primary keys must be at least 1')
+        
         wrong_primaries = [
-            prim for prim in self.__primary__ if
-            prim not in self.__columns__
+            prim for prim in cls.__primary__ if
+            prim not in cls.__columns__
         ]
 
         if wrong_primaries:
             raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
-        
-
-    def _register_types(self) -> None:
-        
-        resolved : list[str] = []
-        assert_register_types = False
-
-        for type_ in self.__types__:
-            
-            if isinstance(type_, str):
-                resolved.append(type_)
-                continue
-            
-            if is_custom_type(type_):
-                ctname = type_.__name__.upper()
-                
-                register_type(type_, ctname)
-                resolved.append(ctname)
-                
-                if not assert_register_types:
-                    assert_register_types = True
-                
-                logger.debug(f'Registered type `{ctname}` in sqlite3')
-                continue 
-            
-            sql_type = pytype_to_sqltype(type_)
-            resolved.append(sql_type)
-        
-        if assert_register_types and ("detect_types" not in self.connection_params):
-            self.connection_params.update(dict(detect_types=sqlite3.PARSE_DECLTYPES))
-
-        self.__types_sql__ = resolved
         
 
     def _write_db(self, force_drop : bool) -> None:
@@ -147,7 +173,7 @@ class SqlTableMixin:
             self.types_sql, self.primary
         )
 
-        self.execute(query)
+        self._connection_manager.execute(query)
 
 
     def drop_table(self, confirm : bool = False) -> None:
@@ -156,52 +182,9 @@ class SqlTableMixin:
         if not confirm:
             raise ValueError("To drop table you have to pass `confirm=True`")
         
-        self.execute(sql.drop_table(self.tablename))
-
-
-    def connect(self) -> sqlite3.Connection:
-        """ Shortcut to sqlite3 connection context manager """
-        return sqlite3.connect(self.database, **self.connection_params)
+        self._connection_manager.execute(sql.drop_table(self.tablename))
     
 
-    def open_connection(self) -> None:
-        """ Opens unmanaged transaction """
-        if self.in_transaction():
-            raise RuntimeError("Can't re-open existing connection")
-        
-        self._trans = self.connect()
-        self._trans_cursor = self._trans.cursor()
-
-    
-    def close_connection(self) -> None:
-        """ Closes unmanaged transaction """
-        if not self.in_transaction():
-            return
-        
-        if self._is_managed_transaction:
-            raise RuntimeError("Can't manually close managed transaction")
-        
-        self._trans_cursor.close()
-        self._trans.close()
-        del(self._trans_cursor)
-        del(self._trans)
-
-
-    def commit(self) -> None:
-        if not self.in_transaction():
-            raise RuntimeError("Can't commit outside transaction mode")
-        
-        self._trans.commit()
-
-
-    def rollback(self) -> None:
-        if not self.in_transaction():
-            raise RuntimeError("Can't rollback outside transaction mode")
-        
-        self._trans.rollback()
-    
-
-    @contextmanager
     def transaction(self, autocommit : bool = True):
         """ 
         Creates context manager to use class methods in transaction
@@ -214,157 +197,9 @@ class SqlTableMixin:
             >>> with table.transaction():
             >>>     for idx, age in table.select("ID", "Age"):
             >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
-            >>>     print(table.select)
         """
         
-        self.open_connection()
-        self._is_managed_transaction = True
-        logger.debug(f"{self.tablename}: Transaction started")
-        
-        try:
-            yield
-
-        except Exception as e:
-            logger.error(f"{self.tablename}: Error while in transaction: {e}")
-            logger.debug(e, exc_info=True)
-            self._trans.rollback()
-            raise e
-        
-        else:
-            if autocommit:
-                self._trans.commit()
-
-        finally:
-            self._is_managed_transaction = False
-            self.close_connection()
-            logger.debug(f"{self.tablename}: Transaction finished")
-
-    
-    def in_transaction(self) -> bool:
-        """ Returns True if instance is in transaction """
-        return hasattr(self, "_trans") and hasattr(self, "_trans_cursor")
-
-    
-    @overload
-    def _fetch(self, query : str, args : tuple[SqlValue, ...], method : Literal["fetchone"]) -> SqlRow: ...
-    @overload
-    def _fetch(self, query : str, args : tuple[SqlValue, ...], method : Literal["fetchall"]) -> list[SqlRow]: ...
-
-    def _fetch(self, query : str, args : tuple[SqlValue, ...] = (), method : Literal["fetchone", "fetchall"] = "fetchall") -> SqlRow | list[SqlRow]:
-        
-        logger.debug(f"{self.tablename}: {query} {args}")
-
-        if self.in_transaction():
-            self._trans_cursor.execute(query, args)
-            return getattr(self._trans_cursor, method)()
-
-        with self.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, args)
-            return getattr(cursor, method)()
-
-    
-    @overload    
-    def _execute(self, query : str, args : tuple[SqlValue, ...], method : Literal["execute"]) -> None: ...
-    @overload
-    def _execute(self, query : str, args : Sequence[SqlRow], method : Literal["executemany"]) -> None: ...
-    
-    def _execute(self, query : str, args : tuple[SqlValue, ...] | Sequence[SqlRow] = (), method : Literal["execute", "executemany"] = "execute") -> None:
-        """
-        Shortcut to connect() -> execute[<many>]() -> commit() for single operations. 
-        Can be used in transaction using `transaction()` manager.
-
-        Args:
-            query (str): SQL query to execute on SQLite3 DB
-            *args (Any): Arguments to the execution
-            method (str): "execute" or "executemany"
-        """
-        logger.debug(f"{self.tablename}: {query} {args}")
-
-        if self.in_transaction():
-            getattr(self._trans_cursor, method)(query, args)
-            return
-        
-        with self.connect() as conn:
-            cursor = conn.cursor()
-            getattr(cursor, method)(query, args)
-            conn.commit()
-
-
-    def execute(self, query : str, *args : SqlValue) -> None:
-        """
-        Shortcut to connect() -> execute() -> commit() for single operations. 
-        Can be used in transaction using `transaction()` manager.
-
-        Args:
-            query (str): SQL query to execute on SQLite3 DB
-            *args (tuple[SqlValue, ...]): Arguments to the execution
-        """
-        return self._execute(query, args, method="execute")
-    
-    
-    def executemany(self, query : str, args : Sequence[SqlRow]) -> None:
-        """
-        Shortcut to connect() -> executemany() -> commit() for single operations. 
-        Can be used in transaction using `transaction()` manager.
-
-        Args:
-            query (str): SQL query to execute on SQLite3 DB
-            *args (list[tuple[SqlValue, ...]]): Arguments to the execution
-        """
-        return self._execute(query, args, method="executemany")
-
-
-    def fetchone(self, query : str, *args : SqlValue) -> SqlRow:
-        """
-        Fetch first row based on `query`
-
-        Args:
-            query (str): SQL query
-            *args (tuple[SqlValue, ...]): Arguments to the execution
-
-        Returns:
-            row (SqlRow): Single row
-        """
-        return self._fetch(query, args, method="fetchone")
-    
-
-    def fetchmany(self, query : str, *args : SqlValue, size : int = 1) -> list[SqlRow]:
-        """
-        Fetch first `size` rows based on `query`
-
-        Args:
-            query (str): SQL query
-            *args (tuple[SqlValue, ...]): Arguments to the execution
-            size (str): Number of rows to return
-
-        Returns:
-            rows (list[SqlRow]): list of `size` rows
-        """
-        logger.debug(f"{self.tablename}: {query} {args}")
-
-        if self.in_transaction():
-            self._trans_cursor.execute(query, args)
-            return self._trans_cursor.fetchmany(size)
-
-        with self.connect() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, args)
-            return cursor.fetchmany(size)
-    
-
-    def fetchall(self, query : str, *args : SqlValue) -> list[SqlRow]:
-        """
-        Fetch all rows based on `query`
-
-        Args:
-            query (str): SQL query
-            *args (tuple[SqlValue, ...]): Arguments to the execution
-
-        Returns:
-            rows (list[SqlRow]): list of rows
-        """
-        return self._fetch(query, args, method="fetchall")
+        return self._connection_manager.transaction(autocommit)
 
     
     def insert(self, *args, **kwargs) -> None:
@@ -382,7 +217,7 @@ class SqlTableMixin:
             >>> table.insert(0, "Daniel", 27)
         """
         query = sql.insert_row(self.tablename, self.columns)
-        self.execute(query, *args)
+        self._connection_manager.execute(query, *args)
 
     
     def upsert(self, *args, **kwargs) -> None:
@@ -402,7 +237,7 @@ class SqlTableMixin:
             >>> table.upsert(0, "Daniel", 21)
         """
         query = sql.upsert(self.tablename, self.columns, self.primary)
-        self.execute(query, *args)
+        self._connection_manager.execute(query, *args)
 
     
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
@@ -414,13 +249,38 @@ class SqlTableMixin:
                 values for one row in the order of __columns__
         """
         query = sql.insert_row(self.tablename, self.columns)
-        return self.executemany(query, rows)
+        return self._connection_manager.executemany(query, rows)
 
 
     def head(self, n : int = 5) -> list[SqlRow]:
         """ Returns first `n` rows unordered """
         return self.select.limit(n).fetchall()
     
+
+    def in_transaction(self) -> bool:
+        """ Returns True if instance is in transaction """
+        return self._connection_manager.in_transaction()
+    
+    
+    def open_connection(self) -> None:
+        """ Opens unmanaged transaction """
+        return self._connection_manager.open()
+
+
+    def close_connection(self) -> None:
+        """ Closes unmanaged transaction """
+        return self._connection_manager.close()
+
+
+    def commit(self) -> None:
+        """ Commit current transaction """
+        return self._connection_manager.commit()
+
+
+    def rollback(self) -> None:
+        """ Rollback current transaction """
+        return self._connection_manager.rollback()
+
 
     def __repr__(self) -> str:
         return (
@@ -431,6 +291,10 @@ class SqlTableMixin:
             f"types={sql.format_list(self.types)}, "
             f"primary={sql.format_list(self.primary)})"
         )
+    
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}(database={self.database}, tablename={self.tablename})"
     
 
     def _repr_html_(self) -> str | None:
@@ -447,6 +311,7 @@ class SqlTableMixin:
         
         if not isinstance(length, int):
             raise ValueError("Unreachable")
+        
         return length
 
     
@@ -458,13 +323,13 @@ class SqlTableMixin:
     def __getitem__(self, key : tuple[SqlValue, ...] | SqlValue | slice ) -> SqlRow | list[SqlRow]:
         """ Get row by primary key """
 
-        if len(self.primary) > 1:
-            if (not isinstance(key, tuple)) or (not len(key) == len(self.primary)):
-                raise IndexError("`key` expected to be a tuple of equal leght to `primary` for multi index tables")
+        if len(self.primary) > 1 and not (isinstance(key, tuple) and len(key) == len(self.primary)):
+            raise IndexError("`key` expected to be a tuple of equal leght to `primary` for multi index tables")
             
         select = self.select
 
-        if isinstance(key, slice):
+        
+        def resolve_slice(key : slice) -> tuple[int, int, int]:
             
             primary = self.primary[0]
 
@@ -486,7 +351,15 @@ class SqlTableMixin:
                 step = key.step
 
             if not (isinstance(start, int) and isinstance(stop, int)):
-                raise ValueError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
+                raise IndexError("Looks like like `primary` key is not integer type, or you passed non-integer slice")
+            
+            return start, stop, step
+            
+        
+        if isinstance(key, slice):
+            
+            primary = self.primary[0]
+            start, stop, step = resolve_slice(key)
 
             if abs(step) == 1:
                 _start = min(start, stop)
@@ -514,19 +387,19 @@ class SqlTableMixin:
     @property
     def update(self) -> Update:
         """ UPDATE statement builder and executor """
-        return Update(self)
+        return Update(self.conn, self.schema)
 
     
     @property
     def delete(self) -> Delete:
         """ DELETE statement builder and executor """
-        return Delete(self)
+        return Delete(self.conn, self.schema)
     
 
     @property
     def select(self) -> Select:
         """ SELECT statement builder and fetcher """
-        return Select(self)
+        return Select(self.conn, self.schema)
 
 
     @property
@@ -564,22 +437,6 @@ class SqlTableMixin:
         """ Table shape (n_cols, n_rows) """
         return (len(self.columns), len(self))
     
-
-    @property
-    def tx_conn(self) -> sqlite3.Connection:
-        """ Gives access to connection while in transaction """
-        if not self.in_transaction():
-            raise RuntimeError("`tx_conn` is not available outside the transaction mode")
-        return self._trans
-    
-    
-    @property
-    def tx_cursor(self) -> sqlite3.Cursor:
-        """ Gives access to connection cursor while in transaction """
-        if not self.in_transaction():
-            raise RuntimeError("`tx_cursor` is not available outside the transaction mode")
-        return self._trans_cursor
-    
     
     @property
     def schema(self) -> Schema:
@@ -591,3 +448,32 @@ class SqlTableMixin:
             "types"    : self.__types__,
             "primary"  : self.__primary__
         })
+    
+
+    @property
+    def conn(self) -> ConnectionManager:
+        """  Access connection manager instance """
+        return self._connection_manager
+    
+
+    @property
+    def tx_conn(self) -> sqlite3.Connection:
+        """ Access connection while in transaction """
+        return self._connection_manager.tx_conn
+
+
+    @property
+    def tx_cursor(self) -> sqlite3.Cursor:
+        """ Access cursor while in transaction """
+        return self._connection_manager.tx_cursor
+    
+
+    @property
+    def connection_params(self) -> dict[str, Any]:
+        """ Connection parameters used in connection creation """
+        return self._connection_manager.connection_params
+
+    
+    @connection_params.setter
+    def connection_params(self, value : dict[str, Any]) -> None:
+        self._connection_manager.connection_params = value

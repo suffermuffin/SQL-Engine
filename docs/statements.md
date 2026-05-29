@@ -12,7 +12,7 @@ table
 <table style="border-collapse: collapse; font-size: 14px;"><caption style="font-size: 18px; font-weight: bold;">Employees</caption><thead><tr><td style="border: 1px solid #555; text-align: center;">ID</td><td style="border: 1px solid #555; text-align: center;">name</td><td style="border: 1px solid #555; text-align: center;">surname</td><td style="border: 1px solid #555; text-align: center;">salary</td><td style="border: 1px solid #555; text-align: center;">position</td></tr></thead><tbody><tr><td style="border: 1px solid #000; text-align: center;">1</td><td style="border: 1px solid #000; text-align: center;">test0</td><td style="border: 1px solid #000; text-align: center;">surname1</td><td style="border: 1px solid #000; text-align: center;">111.1</td><td style="border: 1px solid #000; text-align: center;">pos1</td></tr><tr><td style="border: 1px solid #000; text-align: center;">1</td><td style="border: 1px solid #000; text-align: center;">test1</td><td style="border: 1px solid #000; text-align: center;">surname1</td><td style="border: 1px solid #000; text-align: center;">111.1</td><td style="border: 1px solid #000; text-align: center;">pos1</td></tr><tr><td style="border: 1px solid #000; text-align: center;">2</td><td style="border: 1px solid #000; text-align: center;">test2</td><td style="border: 1px solid #000; text-align: center;">surname2</td><td style="border: 1px solid #000; text-align: center;">122.2</td><td style="border: 1px solid #000; text-align: center;">pos2</td></tr><tr><td style="border: 1px solid #000; text-align: center;">4</td><td style="border: 1px solid #000; text-align: center;">test4</td><td style="border: 1px solid #000; text-align: center;">surname4</td><td style="border: 1px solid #000; text-align: center;">144.4</td><td style="border: 1px solid #000; text-align: center;">pos4</td></tr></tbody></table>
 
 
-You can preview your statements as SQL queries before execution.
+You can preview your statements as SQL queries before execution:
 
 
 ```py
@@ -23,7 +23,7 @@ print(table.delete.where.eq("ID", 0).eq("ID", 3).join("OR"))
 DELETE FROM Employees WHERE (ID = ? OR ID = ?);
 ```
 
-Or repr them to see passed arguments
+Repr them to see passed arguments:
 
 ```py
 repr(table.delete.where.eq("ID", 0).eq("ID", 3).join("OR"))
@@ -31,6 +31,12 @@ repr(table.delete.where.eq("ID", 0).eq("ID", 3).join("OR"))
 
 ```sql
 DELETE FROM Employees WHERE (ID = ? OR ID = ?); (0, 3)
+```
+
+Or you can just build the statement:
+
+```py
+query, args = table.delete.where.eq("ID", 0).eq("ID", 3).join("OR").then.build()
 ```
 
 ## 1.1. Where

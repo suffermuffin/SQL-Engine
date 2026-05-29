@@ -213,13 +213,6 @@ class ConnectionManager:
 
         Args:
             autocommit (bool): If `True`, will commit changes at the end of transaction
-        
-        Examples:
-
-            >>> with table.transaction():
-            >>>     for idx, age in table.select("ID", "Age"):
-            >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
-            >>>     print(table.select)
         """
         
         self.open()

@@ -13,6 +13,7 @@
   - [Delete Query](#delete-query)
   - [Transaction](#transaction)
   - [Get Item](#get-item)
+  - [Custom Types](#custom-types)
   - [Csv Converter](#csv-converter)
 - [Full Documentation](#full-documentation)
 
@@ -56,7 +57,7 @@ table.select("InvoiceId", "CustomerId", "BillingAddress", "BillingCountry", "Tot
 
 ## Purpose
 
-It's a tiny little modern ORM that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own queries which might not be paramerized with methods like `select.custom()` and `where.custom()`.
+It's a tiny little modern ORM-like that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own queries which might not be paramerized with methods like `select.custom()` and `where.custom()`.
 
 And last (but not least) is data inspection. If you need to quickly inspect existing .db file but don't want to install yet another heavy ORM with a lot of unused dependencies, you might look into Sql-Engine, as it uses only native python modules.
 
@@ -107,7 +108,7 @@ __primary__ : list[str]
 More details at [Declaration](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-declaration).
 
 ```py
-from sqlengine import SqlTableMixin
+from sqlengine import SqlTableMixin, Primary
 
 # Helper constants for column names
 ID = "ID"
@@ -118,9 +119,10 @@ Salary = "Salary"
 
 class Employees(SqlTableMixin):
 
-    __columns__   = [ID, Name, Occupation, Salary]
-    __types__     = [int, str, str, float]
-    __primary__   = [ID]
+    ID         : Primary[int]
+    Name       : str
+    Occupation : str
+    Salary     : float
 
     # You may overwrite your insert methods for type consistency
     def insert(self, id : int, name : str, occupation : str, salary : float) -> None:
@@ -137,8 +139,9 @@ More details at [Instantiation](https://github.com/suffermuffin/SQL-Engine/blob/
 ```py
 # Create an instance of the table class 
 # with provided path to create or connect to
+# `force_drop=True` to overwrite existing table if exists
 
-table = Employees("temp/data.db")
+table = Employees("temp/data.db", force_drop=True)
 ```
 
 ## Row insertion
@@ -254,6 +257,43 @@ table[4:10:2]
 #  (6, 'David Wilson', 'DevOps Engineer', 82000.0),
 #  (8, 'Frank White', 'Quality Assurance', 53000.0)]
 ```
+
+## Custom Types
+
+More details at [Custom Types](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/custom_types.md).
+
+```py
+from datetime import datetime
+from sqlengine import SqlTableMixin, Primary
+
+class DateTime(datetime):
+    
+    def to_sql(self) -> str:
+        return self.strftime("%Y-%m-%d %H:%M")
+
+    @classmethod
+    def from_sql(cls, sql : bytes):
+        return cls.fromisoformat(sql.decode('utf-8'))
+    
+    def __repr__(self):
+        return f"DateTime({self.time})"
+
+
+class ReservationIndex(SqlTableMixin):
+
+    user_id : Primary[int]
+    room_id : Primary[str]
+    time_at : Primary[DateTime]
+    user_name : str | None
+
+
+table = ReservationIndex("temp/data.db")
+
+table.insert(1, "loft_1", DateTime.now(), None)
+table
+```
+
+<table style="border-collapse: collapse; font-size: 14px;"><caption style="font-size: 18px; font-weight: bold;">ReservationIndex</caption><thead><tr><td style="border: 1px solid #555; text-align: center;">user_id</td><td style="border: 1px solid #555; text-align: center;">room_id</td><td style="border: 1px solid #555; text-align: center;">time_at</td><td style="border: 1px solid #555; text-align: center;">user_name</td></tr></thead><tbody><tr><td style="border: 1px solid #000; text-align: center;">1</td><td style="border: 1px solid #000; text-align: center;">loft_1</td><td style="border: 1px solid #000; text-align: center;">2026-05-29 21:29:00</td><td style="border: 1px solid #000; text-align: center;">None</td></tr></tbody></table>
 
 ## Csv Converter
 

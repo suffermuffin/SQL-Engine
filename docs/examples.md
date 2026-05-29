@@ -7,10 +7,11 @@
 ```py
 class Employees(SqlTableMixin):
 
-    __columns__   = ["ID", "Name", "Occupation"]
-    __types__     = ["INT", "TEXT NOT NULL", "TEXT"]
-    __primary__   = ["ID"]
     __tablename__ = "EmployeesDB"
+
+    ID         : Primary[int]
+    Name       : str
+    Occupation : str | None
 
     # You may overwrite your insert methods for type consistency
     def insert(self, id : int, name : str, occupation : str) -> None:
@@ -104,7 +105,13 @@ EmployeesDB: SELECT Name, ID FROM EmployeesDB WHERE Occupation = ?; ('CEO',)
 ## Query select with multiple where clauses
 
 ```py
-table.select.where.eq('Occupation', 'worker').eq('Occupation', 'CEO').join("OR").then.fetchall()
+table.select\
+    .where\
+        .eq('Occupation', 'worker')\
+        .eq('Occupation', 'CEO')\
+        .join("OR")\
+    .then\
+        .fetchall()
 
 # Returns
 [(0, 'John', 'CEO'),
@@ -122,7 +129,13 @@ EmployeesDB: SELECT * FROM EmployeesDB WHERE (Occupation = ? OR Occupation = ?);
 
 ## Select, compare, order and limit
 ```py
-table.select.where.in_('Occupation', ('seller', 'worker')).then.order_by("ID", ascending=False).limit(5).fetchall()
+table.select\
+    .where\
+        .in_('Occupation', ('seller', 'worker'))\
+    .then\
+        .order_by("ID", ascending=False)\
+        .limit(5)\
+        .fetchall()
 
 # Returns
 [(7, 'Maria', 'seller'),
@@ -214,7 +227,6 @@ EmployeesDB: Transaction finished
 ## Iterate over multiple tables
 
 ```py
-
 from sqlengine.utils import shared_connection
 from sqlengine import SqlTableMixin
 
@@ -241,7 +253,7 @@ table2.insert_many([(1, 2.5), (2, 30), (3, 12.5)])
 
 
 with shared_connection(table1, table2, **table1.connection_params):
-    for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
+    for (id1,), (id2, temp) in zip(table1.select("ID"), table2.select("ID", "Temperature")):
         if id1 == id2:
             table1.update.where.eq("ID", id2).then.set("Salary", temp).execute()
 

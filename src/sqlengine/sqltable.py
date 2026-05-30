@@ -7,6 +7,7 @@ from typing import get_origin, get_args, overload, get_type_hints
 
 from .core import sqlgen as sql
 from .core.repr import to_html
+from .core.exceptions import TableDeclarationError
 
 from .core import ConnectionManager, Select, Update, Delete
 from .core.types import SqlRow, SqlValue, ColumnType
@@ -90,7 +91,7 @@ class SqlTableMixin:
                 continue
             
             if name in columns:
-                raise AttributeError(f"Annotated column `{name}` is already in __columns__")
+                raise TableDeclarationError(f"Annotated column `{name}` is already in __columns__")
             
             columns.append(name)
             
@@ -99,12 +100,13 @@ class SqlTableMixin:
                 continue
 
             if name in primary:
-                raise AttributeError(f"Annotated primary column `{name}` is already in __primary__")
+                raise TableDeclarationError(f"Annotated primary column `{name}` is already in __primary__")
             
             primary_type = get_args(type_)[0]
 
             if not primary_type:
-                raise AttributeError("Primary type was declared without the type. Usage: `my_column : Primary[T]`, where T is desired type")
+                raise TableDeclarationError(("Primary type was declared without the type. "
+                "Usage: `my_column : Primary[T]`, where T is desired type"))
             
             types.append(primary_type)
             primary.append(name)
@@ -128,15 +130,15 @@ class SqlTableMixin:
         ]
 
         if missing_attrs:
-            raise AttributeError(f'{cls.__name__} is missing attributes: {missing_attrs}')
+            raise TableDeclarationError(f'{cls.__name__} is missing attributes: {missing_attrs}')
         
         n_types, n_cols = len(cls.__types__), len(cls.__columns__)
 
         if not n_types == n_cols:
-            raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
+            raise TableDeclarationError((f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}'))
         
         if len(cls.__primary__) < 1:
-            raise AttributeError(f'`__primary__`: Number of primary keys must be at least 1')
+            raise TableDeclarationError(f'`__primary__`: Number of primary keys must be at least 1')
         
         wrong_primaries = [
             prim for prim in cls.__primary__ if
@@ -144,7 +146,7 @@ class SqlTableMixin:
         ]
 
         if wrong_primaries:
-            raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
+            raise TableDeclarationError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
         
 
     def _write_db(self, force_drop : bool) -> None:

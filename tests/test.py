@@ -591,14 +591,14 @@ class TestSqlTable(unittest.TestCase):
     def test_class_declaration(self):
         
         with self.subTest("Should raise attr error as of no primaries"):
-            with self.assertRaises(AttributeError):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable1(SqlTableMixin):
                     val : str
                     key : int
             
         
         with self.subTest("Should raise attr error as N is not declared in columns"):
-            with self.assertRaises(AttributeError):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable2(SqlTableMixin):
                     val : str
                     key : Primary[int]
@@ -607,7 +607,7 @@ class TestSqlTable(unittest.TestCase):
             
         
         with self.subTest("Should raise attr error as of double declaration of columns"):
-            with self.assertRaises(AttributeError):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable3(SqlTableMixin):
                     val : str
                     key : Primary[int]
@@ -617,7 +617,7 @@ class TestSqlTable(unittest.TestCase):
 
         
         with self.subTest("Should raise attr error as of double declaration of primaries"):
-            with self.assertRaises(AttributeError):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable4(SqlTableMixin):
                     val : str
                     key : Primary[int]

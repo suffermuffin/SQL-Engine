@@ -6,6 +6,7 @@ from typing import overload, Literal, Sequence
 from contextlib import contextmanager
 
 from .types import SqlValue, SqlRow
+from .exceptions import TransactionError, NestedTransactionError, OutsideTransactionError
 
 
 logger = logging.getLogger("sqlengine")
@@ -172,7 +173,7 @@ class ConnectionManager:
     def open(self) -> None:
         """ Opens unmanaged transaction """
         if self.in_transaction():
-            raise RuntimeError("Can't re-open existing connection")
+            raise NestedTransactionError("Can't re-open existing connection")
         
         self._trans = self.connect()
         self._trans_cursor = self._trans.cursor()
@@ -184,7 +185,7 @@ class ConnectionManager:
             return
         
         if self._is_managed_transaction:
-            raise RuntimeError("Can't manually close managed transaction")
+            raise TransactionError("Can't manually close managed transaction")
         
         self._trans_cursor.close()
         self._trans.close()
@@ -194,14 +195,14 @@ class ConnectionManager:
 
     def commit(self) -> None:
         if not self.in_transaction():
-            raise RuntimeError("Can't commit outside transaction mode")
+            raise OutsideTransactionError("Can't commit outside transaction mode")
         
         self._trans.commit()
 
 
     def rollback(self) -> None:
         if not self.in_transaction():
-            raise RuntimeError("Can't rollback outside transaction mode")
+            raise OutsideTransactionError("Can't rollback outside transaction mode")
         
         self._trans.rollback()
     
@@ -242,7 +243,7 @@ class ConnectionManager:
     def tx_conn(self) -> sqlite3.Connection:
         """ Gives access to connection while in transaction """
         if not self.in_transaction():
-            raise RuntimeError("`tx_conn` is not available outside the transaction mode")
+            raise OutsideTransactionError("`tx_conn` is not available outside the transaction mode")
         return self._trans
     
     
@@ -250,6 +251,6 @@ class ConnectionManager:
     def tx_cursor(self) -> sqlite3.Cursor:
         """ Gives access to connection cursor while in transaction """
         if not self.in_transaction():
-            raise RuntimeError("`tx_cursor` is not available outside the transaction mode")
+            raise OutsideTransactionError("`tx_cursor` is not available outside the transaction mode")
         return self._trans_cursor
 

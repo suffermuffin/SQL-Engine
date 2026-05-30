@@ -6,6 +6,7 @@ from .connection import ConnectionManager
 
 from .types import SqlValue, SqlRow, Schema
 from .repr  import to_html
+from .exceptions import SqlEngineError, OutsideTransactionError
 
 
 class Where[T : "Statement"]:
@@ -88,7 +89,7 @@ class Where[T : "Statement"]:
     
     def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
         if isinstance(values, str):
-            raise ValueError("Got string as sequence of values in in_, expected tuple/list/etc...")
+            raise SqlEngineError("Got string as sequence of values in in_, expected tuple/list/etc...")
         placeholder = sql.values_placeholder(len(values))
         self._clause.append(f"{column} IN {placeholder}")
         self._args.extend(values)
@@ -234,7 +235,7 @@ class Select(Statement):
     def aggregate(self, by : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']) -> Self:
         
         if self._aggregate:
-            raise ValueError("Can't aggregate columns multiple times")
+            raise SqlEngineError("Can't aggregate columns multiple times")
         
         self._aggregate = by
         return self
@@ -280,7 +281,7 @@ class Select(Statement):
             >>>         process_batch(batch)
         """
         if not self._connection.in_transaction():
-            raise RuntimeError("To use the `fetchall_iterator()` method you have \
+            raise OutsideTransactionError("To use the `fetchall_iterator()` method you have \
                     to keep open the transaction of the table with `transaction()` manager")
         
         query, exec_args = self.build()
@@ -296,7 +297,7 @@ class Select(Statement):
         """ Select statement rows iterator """
         
         if not self._connection.in_transaction():
-            raise RuntimeError("To use the __iter__ method you have \
+            raise OutsideTransactionError("To use the __iter__ method you have \
                 to keep open the transaction of the table with `transaction()` manager")
         
         query, exec_args = self.build()
@@ -360,7 +361,7 @@ class Delete(MutationalStatement):
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
-            raise ValueError("Delete statement must have a where clause")
+            raise SqlEngineError("Delete statement must have a where clause")
         
         query = sql.delete_rows(self._tableschema["tablename"], where_clause)
         return query, args

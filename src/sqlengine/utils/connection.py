@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 from ..sqltable import SqlTableMixin
 from ..core.connection import ConnectionManager
+from ..core.exceptions import NestedTransactionError
 
 
 logger = logging.getLogger("sqlengine")
@@ -38,7 +39,7 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
     ]
     
     if tables_in_trans:
-        raise RuntimeError(f"Tables {tables_in_trans} are already in transaction")
+        raise NestedTransactionError(f"Tables {tables_in_trans} are already in transaction")
     
     unique_databases = set(table.database for table in args)
     database_map : dict[str, list[ConnectionManager]] = {}

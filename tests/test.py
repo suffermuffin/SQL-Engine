@@ -7,6 +7,7 @@ import sys
 import warnings
 
 from sqlengine       import schema, SqlTableMixin, Primary
+from sqlengine       import exceptions
 from sqlengine.utils import shared_connection
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
@@ -158,17 +159,17 @@ class TestSqlTable(unittest.TestCase):
     
     def test_transaction_nesting(self):
         
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.NestedTransactionError):
             with self.coord_table.transaction():
                 with self.coord_table.transaction():
                     pass
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.NestedTransactionError):
             with self.coord_table.transaction():
                 with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                     pass
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.NestedTransactionError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                 with self.coord_table.transaction():
                     pass
@@ -354,10 +355,10 @@ class TestSqlTable(unittest.TestCase):
 
 
     def test_unmanaged_connection_attrs(self):
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_cursor
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_conn
 
         self.empl_table.conn.open()
@@ -370,10 +371,10 @@ class TestSqlTable(unittest.TestCase):
 
         self.empl_table.conn.close()
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_cursor
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_conn
 
     
@@ -404,22 +405,22 @@ class TestSqlTable(unittest.TestCase):
 
     def test_transaction_edge_case(self):
         
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with self.empl_table.transaction():
                 self.empl_table.conn.close()
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with self.empl_table.transaction():
                 self.empl_table.conn.open()
 
     
     def test_shared_connection_edge_case(self):
         
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                 self.coord_table.conn.close()
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                 self.empl_table.conn.open()
 
@@ -843,7 +844,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertEqual(query, "temp BETWEEN ? AND ?")
         self.assertEqual(args, (2.0, 6.0))
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(exceptions.SqlEngineError):
             table.select.where.in_("ID", "1,2,3")
 
     
@@ -944,7 +945,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertEqual(max_, 144.4)
 
         # multi aggregation
-        with self.assertRaises(ValueError):
+        with self.assertRaises(exceptions.SqlEngineError):
             table.select.aggregate("COUNT").aggregate("SUM")
 
     
@@ -1012,7 +1013,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertIsNone(table[7])
 
         # Can't delete without where
-        with self.assertRaises(ValueError):
+        with self.assertRaises(exceptions.SqlEngineError):
             table.delete.execute()
 
 

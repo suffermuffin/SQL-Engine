@@ -12,15 +12,15 @@ class CustomType(Protocol):
         ...
 
 
-type SqlValue = str | int | float | bytes | None | CustomType
-type SqlRow   = tuple[SqlValue, ...]
-type SqlType  = type[str | int | float | bytes | CustomType]
-
+type SqlValue   = str | int | float | bytes | None | CustomType
+type SqlRow     = tuple[SqlValue, ...]
+type SqlType    = type[str | int | float | bytes | CustomType]
+type ColumnType = SqlType | str | UnionType
 
 class Schema(TypedDict):
     tablename : str
     columns   : list[str]
-    types     : list[SqlType | str]
+    types     : list[ColumnType]
     primary   : list[str]
 
 
@@ -41,7 +41,7 @@ _TYPES_MAP : dict[type | UnionType, str] = {
 }
 
 
-def is_custom_type(type_: SqlType) -> TypeGuard[type[CustomType]]:
+def is_custom_type(type_: SqlType | UnionType) -> TypeGuard[type[CustomType]]:
     return (
         type_ not in (str, int, float, bytes)
         and isinstance(type_, type)
@@ -65,7 +65,7 @@ def register_type(cls : type[CustomType], type_name : str | None = None) -> None
     sqlite3.register_converter(type_name, cls.from_sql)
 
 
-def pytype_to_sqltype(type_ : type) -> str:
+def pytype_to_sqltype(type_ : type | UnionType) -> str:
     """ Converts python type to sql type """
     if type_ not in _TYPES_MAP:
         raise TypeError(f"{type_} is not natively supported by sqlite3")
@@ -73,7 +73,7 @@ def pytype_to_sqltype(type_ : type) -> str:
     return _TYPES_MAP[type_]
 
 
-def register_resolve_types(types : list[SqlType | str], **connection_params) -> tuple[list[str], dict[str, Any]]:
+def register_resolve_types(types : list[ColumnType], **connection_params) -> tuple[list[str], dict[str, Any]]:
     """ Converts py types to sql types, registers custom types, resolves type names, updates connection params """
 
     resolved : list[str] = []

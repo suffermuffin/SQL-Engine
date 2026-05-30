@@ -9,7 +9,7 @@ from .core import sqlgen as sql
 from .core.repr import to_html
 
 from .core import ConnectionManager, Select, Update, Delete
-from .core.types import SqlRow, SqlValue, SqlType
+from .core.types import SqlRow, SqlValue, ColumnType
 from .core.types import Schema, Primary
 from .core.types import register_resolve_types
 
@@ -33,7 +33,7 @@ class SqlTableMixin:
         __tablename__ (Optional[str]): Name of the table that will be used in queries. 
             If omitted in inherited class declaration, then it will take the class name.
         __columns__ (list[str]): Colum names of the table
-        __types__ (list[SqlType | str]): Colum types of the table
+        __types__ (list[ColumnType]): Colum types of the table
         __primary__ (list[str]): List of primary keys
 
     Examples:
@@ -59,7 +59,7 @@ class SqlTableMixin:
 
     __tablename__ : str
     __columns__   : list[str]
-    __types__     : list[SqlType | str]
+    __types__     : list[ColumnType]
     __primary__   : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
@@ -207,17 +207,20 @@ class SqlTableMixin:
         Insert single row
 
         Args:
-            *args (Any): Arguments in order of declared __columns__
-            **kwargs (Any): Unused
+            *args (SqlValue): Arguments in order of declared __columns__
+            **kwargs (dict[str, SqlValue]): Column to value mapping
 
         Example:
             >>> table = MyTable("mydb.db")
             >>> table.columns 
             >>> # ["ID", "Name", "Age"]
             >>> table.insert(0, "Daniel", 27)
+            >>> table.insert(ID=1, name="Boris", age=26)
         """
-        query = sql.insert_row(self.tablename, self.columns)
-        self._connection_manager.execute(query, *args)
+        columns = self.columns[:len(args)]
+        columns.extend(kwargs.keys())
+        query = sql.insert_row(self.tablename, columns)
+        self._connection_manager.execute(query, *args, *kwargs.values())
 
     
     def upsert(self, *args, **kwargs) -> None:
@@ -234,10 +237,12 @@ class SqlTableMixin:
             >>> table.columns 
             >>> # ["ID", "Name", "Age"]
             >>> table.upsert(0, "Daniel", 27)
-            >>> table.upsert(0, "Daniel", 21)
+            >>> table.upsert(ID=0, name=21)
         """
-        query = sql.upsert(self.tablename, self.columns, self.primary)
-        self._connection_manager.execute(query, *args)
+        columns = self.columns[:len(args)]
+        columns.extend(kwargs.keys())
+        query = sql.upsert(self.tablename, columns, self.primary)
+        self._connection_manager.execute(query, *args, *kwargs.values())
 
     
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
@@ -409,7 +414,7 @@ class SqlTableMixin:
 
     
     @property
-    def types(self) -> list[SqlType | str]:
+    def types(self) -> list[ColumnType]:
         """ List of table column dtypes as declared"""
         return self.__types__
     

@@ -16,6 +16,11 @@ class Point:
     
     def __repr__(self) -> str:
         return f"Point({self.to_sql()})"
+    
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Point):
+            raise ValueError(f"Can't compare Point to {type(value)}")
+        return (self.x == value.x) and (self.y == value.y)
 
 
 class Employees(SqlTableMixin):

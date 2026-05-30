@@ -146,7 +146,7 @@ class Statement(ABC):
 
         self._tableschema = tableschema
         self._connection  = connection
-        self._where: Where[Self] = Where(self)
+        self._where = Where(self)
 
         self._custom_query : str | None = None
         self._custom_args  : tuple[SqlValue, ...] = ()

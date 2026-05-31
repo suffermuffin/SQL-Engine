@@ -2,8 +2,8 @@ import csv
 from typing import Generator
 
 from ..sqltable import SqlTableMixin
-from ..core.statements import Where, Select
-from ..core.types import SqlValue
+from .._internal.statements import Where, Select
+from .._internal.types import SqlValue
 
 
 def _get_select(builder : Select | Where[Select] | SqlTableMixin) -> Select:

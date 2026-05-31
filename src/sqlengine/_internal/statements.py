@@ -2,11 +2,11 @@ from typing import Sequence, Literal, Generator, Self
 from abc    import ABC, abstractmethod
 
 from . import sqlgen as sql
-from .connection import ConnectionManager
+from .connection_manager import ConnectionManager
 
 from .types import SqlValue, SqlRow, Schema
 from .repr  import to_html
-from .exceptions import SqlEngineError, OutsideTransactionError
+from ..exceptions import SqlEngineError, OutsideTransactionError
 
 
 class Where[T : "Statement"]:
@@ -89,7 +89,7 @@ class Where[T : "Statement"]:
     
     def in_(self, column : str, values : Sequence[SqlValue]) -> Self:
         if isinstance(values, str):
-            raise SqlEngineError("Got string as sequence of values in in_, expected tuple/list/etc...")
+            raise ValueError("Got string as sequence of values in in_, expected tuple/list/etc...")
         placeholder = sql.values_placeholder(len(values))
         self._clause.append(f"{column} IN {placeholder}")
         self._args.extend(values)
@@ -282,7 +282,7 @@ class Select(Statement):
         """
         if not self._connection.in_transaction():
             raise OutsideTransactionError("To use the `fetchall_iterator()` method you have \
-                    to keep open the transaction of the table with `transaction()` manager")
+                    to keep open the transaction of the table")
         
         query, exec_args = self.build()
 
@@ -298,7 +298,7 @@ class Select(Statement):
         
         if not self._connection.in_transaction():
             raise OutsideTransactionError("To use the __iter__ method you have \
-                to keep open the transaction of the table with `transaction()` manager")
+                to keep open the transaction of the table")
         
         query, exec_args = self.build()
         

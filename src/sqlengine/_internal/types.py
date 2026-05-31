@@ -17,6 +17,7 @@ type SqlRow     = tuple[SqlValue, ...]
 type SqlType    = type[str | int | float | bytes | CustomType]
 type ColumnType = SqlType | str | UnionType
 
+
 class Schema(TypedDict):
     tablename : str
     columns   : list[str]
@@ -52,7 +53,7 @@ def is_custom_type(type_: SqlType | UnionType) -> TypeGuard[type[CustomType]]:
 
 def register_type(cls : type[CustomType], type_name : str | None = None) -> None:
     """ 
-    Register custom type to be able to store it in tables 
+    Register custom type into sqlite3 to be able to store it in tables
     
     Args:
         cls (CustomType): Class that implements `from_sql(cls, sql : bytes) -> Self` and `

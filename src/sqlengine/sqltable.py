@@ -5,14 +5,15 @@ import sqlite3
 from typing import Sequence, Literal, Any
 from typing import get_origin, get_args, overload, get_type_hints
 
-from .core import sqlgen as sql
-from .core.repr import to_html
-from .core.exceptions import TableDeclarationError
+from .exceptions import TableDeclarationError
 
-from .core import ConnectionManager, Select, Update, Delete
-from .core.types import SqlRow, SqlValue, ColumnType
-from .core.types import Schema, Primary
-from .core.types import register_resolve_types
+from ._internal import sqlgen as sql
+from ._internal.repr import to_html
+
+from ._internal import ConnectionManager, Select, Update, Delete
+from ._internal.types import SqlRow, SqlValue, ColumnType
+from ._internal.types import Schema, Primary
+from ._internal.types import register_resolve_types
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -27,26 +28,18 @@ class SqlTableMixin:
             If `":memory:"` is passed, then database will be created in memory and you will have to
             create table manually with `create_table()` method inside `transaction()` block.
         force_drop (bool): If `True` - will drop existing table.
-        **connection_params (dict): Params to create connection with. 
+        **connection_params: Params to create connection with. 
             Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
 
     Attributes:
         __tablename__ (Optional[str]): Name of the table that will be used in queries. 
             If omitted in inherited class declaration, then it will take the class name.
-        __columns__ (list[str]): Colum names of the table
-        __types__ (list[ColumnType]): Colum types of the table
+        __columns__ (list[str]): Column names of the table
+        __types__ (list[ColumnType]): Column types of the table
         __primary__ (list[str]): List of primary keys
 
     Examples:
         >>> from sqlengine import SqlTableMixin, Primary
-        >>>
-        >>> class Employees(SqlTableMixin):
-        >>>     __columns__   = ["ID", "name", "surname", "salary", "position"]
-        >>>     __types__     = [int, str, str, float, "TEXT NOT NULL"]
-        >>>     __primary__   = ["ID", "name"]
-        >>> 
-        >>> table = Employees(":memory:")
-        >>>
         >>>
         >>> class Employees(SqlTableMixin):
         >>>     ID       : Primary[int]
@@ -65,9 +58,10 @@ class SqlTableMixin:
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
+        self.database = database
+
         resolved_types, connection_params = register_resolve_types(self.__types__, **connection_params)
 
-        self.database            = database
         self._connection_manager = ConnectionManager(database, **connection_params)
         self.__types_sql__       = resolved_types
 
@@ -459,7 +453,7 @@ class SqlTableMixin:
 
     @property
     def conn(self) -> ConnectionManager:
-        """  Access connection manager instance """
+        """ Access connection manager instance """
         return self._connection_manager
     
 

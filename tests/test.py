@@ -11,7 +11,8 @@ from sqlengine       import exceptions
 from sqlengine.utils import shared_connection
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
-from src.tables import Employees, Coordinates, Point, coord_schema, COORDS_DATA, EMPLOYEES_DATA
+from src.tables import Employees, Coordinates, Point
+from src.tables import coord_schema, COORDS_DATA, EMPLOYEES_DATA
 
 
 TEST_DIR   = "temp/"
@@ -590,14 +591,14 @@ class TestSqlTable(unittest.TestCase):
     
     def test_class_declaration(self):
         
-        with self.subTest("Should raise attr error as of no primaries"):
+        with self.subTest("Should raise TableDeclarationError error as of no primaries"):
             with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable1(SqlTableMixin):
                     val : str
                     key : int
             
         
-        with self.subTest("Should raise attr error as N is not declared in columns"):
+        with self.subTest("Should raise TableDeclarationError error as N is not declared in columns"):
             with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable2(SqlTableMixin):
                     val : str
@@ -606,7 +607,7 @@ class TestSqlTable(unittest.TestCase):
                     __primary__ = ['N']
             
         
-        with self.subTest("Should raise attr error as of double declaration of columns"):
+        with self.subTest("Should raise TableDeclarationError error as of double declaration of columns"):
             with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable3(SqlTableMixin):
                     val : str
@@ -616,13 +617,30 @@ class TestSqlTable(unittest.TestCase):
                     __types__   = [str, "INTEGER"]
 
         
-        with self.subTest("Should raise attr error as of double declaration of primaries"):
+        with self.subTest("Should raise TableDeclarationError error as of double declaration of primaries"):
             with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable4(SqlTableMixin):
                     val : str
                     key : Primary[int]
 
                     __primary__ = ["key"]
+
+        
+        with self.subTest("Should raise type error as of wrong union"):
+            with self.assertRaises(TypeError):
+                class EdgeCaseTable6(SqlTableMixin):
+                    val : str | int
+                    key : Primary[int]
+
+                table = EdgeCaseTable6(":memory:")
+
+        
+        with self.subTest("Should work, why not"):
+            class EdgeCaseTable7(SqlTableMixin):
+                val : str
+                key : Primary[int | None]
+
+            table = EdgeCaseTable7(":memory:")
 
         
         with self.subTest("Should work"):
@@ -791,7 +809,7 @@ class TestSqlTable(unittest.TestCase):
                 
                 assert len(table) == len(data_2)
 
-                result = []
+                result : list[dict] = []
                 
                 for batch in to_dicts_stream(table, batch_size):
                     result.extend(batch)
@@ -844,7 +862,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertEqual(query, "temp BETWEEN ? AND ?")
         self.assertEqual(args, (2.0, 6.0))
 
-        with self.assertRaises(exceptions.SqlEngineError):
+        with self.assertRaises(ValueError):
             table.select.where.in_("ID", "1,2,3")
 
     

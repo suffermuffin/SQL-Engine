@@ -3,7 +3,7 @@ import sqlite3
 from typing import overload
 
 from .sqltable import SqlTableMixin
-from .core.types import Schema
+from ._internal.types import Schema
 
 
 def get_database_tablenames(database : str, cursor : sqlite3.Cursor | None = None) -> list[str]:

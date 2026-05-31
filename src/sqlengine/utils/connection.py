@@ -4,9 +4,9 @@ import sqlite3
 
 from contextlib import contextmanager
 
-from ..sqltable import SqlTableMixin
-from ..core.connection import ConnectionManager
-from ..core.exceptions import NestedTransactionError
+from ..sqltable   import SqlTableMixin
+from .._internal  import ConnectionManager
+from ..exceptions import NestedTransactionError
 
 
 logger = logging.getLogger("sqlengine")

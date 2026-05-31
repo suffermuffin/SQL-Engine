@@ -6,7 +6,7 @@ from typing import overload, Literal, Sequence
 from contextlib import contextmanager
 
 from .types import SqlValue, SqlRow
-from .exceptions import TransactionError, NestedTransactionError, OutsideTransactionError
+from ..exceptions import TransactionError, NestedTransactionError, OutsideTransactionError
 
 
 logger = logging.getLogger("sqlengine")

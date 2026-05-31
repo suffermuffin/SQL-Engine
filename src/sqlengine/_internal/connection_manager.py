@@ -15,6 +15,16 @@ logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 class ConnectionManager:
 
+    """ 
+    Connection manager for sqlite3 
+    
+    Args:
+
+        database (str): database filename to connect to. If `":memory:"` is passed, then database will be set in memory and you will have to
+            create table manually with `create_table()` method inside `transaction()` block.
+        **connection_params: Params to create connection with. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
+    """
+
     _trans : sqlite3.Connection
     _trans_cursor : sqlite3.Cursor
 

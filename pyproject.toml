@@ -19,6 +19,12 @@ where = ["src"]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[dependency-groups]
+dev = [
+    "black==26.5.1",
+    "pydoc-markdown>=4.8.2",
+]
+
 [project.urls]
 Homepage = "https://github.com/suffermuffin/SQL-Engine"
 Repository = "https://github.com/suffermuffin/SQL-Engine.git"

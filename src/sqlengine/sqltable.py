@@ -25,11 +25,10 @@ class SqlTableMixin:
     
     Args:
         database (str): database filename to connect to. If it not exists - will create new one first.
-            If `":memory:"` is passed, then database will be created in memory and you will have to
+            If `":memory:"` is passed, then database will be set in memory and you will have to
             create table manually with `create_table()` method inside `transaction()` block.
         force_drop (bool): If `True` - will drop existing table.
-        **connection_params: Params to create connection with. 
-            Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
+        **connection_params: Params to create connection with. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
 
     Attributes:
         __tablename__ (Optional[str]): Name of the table that will be used in queries. 
@@ -39,16 +38,18 @@ class SqlTableMixin:
         __primary__ (list[str]): List of primary keys
 
     Examples:
-        >>> from sqlengine import SqlTableMixin, Primary
-        >>>
-        >>> class Employees(SqlTableMixin):
-        >>>     ID       : Primary[int]
-        >>>     name     : Primary[str]
-        >>>     surname  : str | None
-        >>>     salary   : float | None
-        >>>     position : str
-        >>> 
-        >>> table = Employees("mydb.sqlite3")
+    ```python
+    from sqlengine import SqlTableMixin, Primary
+    
+    class Employees(SqlTableMixin):
+        ID       : Primary[int]
+        name     : Primary[str]
+        surname  : str   | None
+        salary   : float | None
+        position : str
+        
+    table = Employees("mydb.sqlite3")
+    ```
     """
 
     __tablename__ : str
@@ -189,10 +190,12 @@ class SqlTableMixin:
             autocommit (bool): If `True`, will commit changes at the end of transaction
         
         Examples:
-
-            >>> with table.transaction():
-            >>>     for idx, age in table.select("ID", "Age"):
-            >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
+            
+        ```python
+        with table.transaction():
+            for idx, age in table.select("ID", "Age"):
+                table.update("Age", age + 1).where.eq("ID", idx).then.execute()
+        ```
         """
         
         return self._connection_manager.transaction(autocommit)
@@ -204,14 +207,16 @@ class SqlTableMixin:
 
         Args:
             *args (SqlValue): Arguments in order of declared __columns__
-            **kwargs (dict[str, SqlValue]): Column to value mapping
+            **kwargs (SqlValue): Column to value mapping
 
-        Example:
-            >>> table = MyTable("mydb.db")
-            >>> table.columns 
-            >>> # ["ID", "Name", "Age"]
-            >>> table.insert(0, "Daniel", 27)
-            >>> table.insert(ID=1, name="Boris", age=26)
+        Examples:
+
+        ```python
+        table = MyTable("mydb.db")
+        table.columns # -> ["ID", "Name", "Age"]
+        table.insert(0, "Daniel", 27)
+        table.insert(ID=1, name="Boris", age=26)
+        ```
         """
         columns = self.columns[:len(args)]
         columns.extend(kwargs.keys())
@@ -225,15 +230,17 @@ class SqlTableMixin:
         via the declared `primary` key
         
         Args:
-            *args (Any): Arguments in order of declared __columns__
-            **kwargs (Any): Unused
+            **args (SqlValue): Arguments in order of declared __columns__
+            **kwargs (SqlValue): Column to value mapping
 
         Example:
-            >>> table = MyTable("mydb.db")
-            >>> table.columns 
-            >>> # ["ID", "Name", "Age"]
-            >>> table.upsert(0, "Daniel", 27)
-            >>> table.upsert(ID=0, name=21)
+
+        ```python
+        table = MyTable("mydb.db")
+        table.columns # -> ["ID", "Name", "Age"]
+        table.upsert(0, "Daniel", 27)
+        table.upsert(ID=0, age=21)
+        ```
         """
         columns = self.columns[:len(args)]
         columns.extend(kwargs.keys())
@@ -387,19 +394,43 @@ class SqlTableMixin:
 
     @property
     def update(self) -> Update:
-        """ UPDATE statement builder and executor """
+        """ 
+        UPDATE statement builder and executor 
+        
+        Examples:
+        
+        ```python
+        table.update.set("City", "Karaganda").where.eq("Country", "Czech Republic").then.execute()
+        ```
+        """
         return Update(self.conn, self.schema)
 
     
     @property
     def delete(self) -> Delete:
-        """ DELETE statement builder and executor """
+        """ 
+        DELETE statement builder and executor 
+        
+        Examples:
+        
+        ```python
+        table.delete.where.eq("ID", 0).then.execute()
+        ```
+        """
         return Delete(self.conn, self.schema)
     
 
     @property
     def select(self) -> Select:
-        """ SELECT statement builder and fetcher """
+        """ 
+        SELECT statement builder and fetcher
+
+        Examples:
+        
+        ```python
+        table.select("Email").where.eq("SupportRepId", 3).then.aggregate("COUNT").fetchone()
+        ```
+        """
         return Select(self.conn, self.schema)
 
 

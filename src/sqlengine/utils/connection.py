@@ -27,11 +27,13 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
     
     Examples:
 
-        >>> from sqlengine.utils import shared_connection
-        >>> with shared_connection(table1, table2, **table1.connection_params):
-        >>>     for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
-        >>>         if id1 == id2:
-        >>>             table.update.where.eq("ID", id2).then.set("Salary", temp).execute()
+    ```python
+    from sqlengine.utils import shared_connection
+    with shared_connection(table1, table2, **table1.connection_params):
+        for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
+            if id1 == id2:
+                table.update.where.eq("ID", id2).then.set("Salary", temp).execute()
+    ```
     """
 
     tables_in_trans = [

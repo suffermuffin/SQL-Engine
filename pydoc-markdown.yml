@@ -1,0 +1,23 @@
+loaders:
+  - type: python
+    search_path: ['src']
+    modules: [
+      'sqlengine.sqltable', 
+      'sqlengine.schema', 
+      'sqlengine.utils.connection', 
+      'sqlengine.utils.convert', 
+      'sqlengine._internal.statements',
+      'sqlengine._internal.connection_manager',
+      ]
+
+processors:
+  - type: filter
+    exclude_private: true
+  - type: smart
+
+renderer:
+  type: markdown
+  filename: docs/api.md
+  render_toc: true
+  render_toc_title: "Sql-Engine"
+  toc_maxdepth: 1

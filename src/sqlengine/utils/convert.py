@@ -66,11 +66,13 @@ def to_dicts(builder : Select | Where[Select] | SqlTableMixin) -> list[dict[str,
     Returns:
         out (list[dict[str, SqlValue]]): list of rows mappings
     
-    Examlpes:
+    Examples:
 
-        >>> import pandas as pd
-        >>>
-        >>> df = pd.DataFrame(to_dict(table))
+    ```python
+    import pandas as pd
+    
+    df = pd.DataFrame(to_dict(table))
+    ```
     """
     
     builder = _get_select(builder)
@@ -91,8 +93,6 @@ def to_dicts_stream(
     """
     Converts query or whole table to pandas friendly format and yields it in batches
 
-    Converts query or whole table to pandas friendly format
-
     Args:
         builder (Select | Where[Select] | SqlTableMixin): Object to convert to list of dicts
         batch_size (int): Size of each yiedled batch
@@ -102,15 +102,17 @@ def to_dicts_stream(
     
     Examples:
 
-    >>> import pandas as pd
-    >>> 
-    >>> df = pd.DataFrame(columns=table.columns)
-    >>> 
-    >>> with table.transaction():
-    >>>     for batch in to_dict_stream(table, 100):
-    >>>         df = pd.concat([df, pd.DataFrame(batch)], axis=0)
-    >>> 
-    >>> df.set_index("ID", inplace=True)
+    ```python
+    import pandas as pd
+    
+    df = pd.DataFrame(columns=table.columns)
+    
+    with table.transaction():
+        for batch in to_dict_stream(table, 100):
+            df = pd.concat([df, pd.DataFrame(batch)], axis=0)
+    
+    df.set_index("ID", inplace=True)
+    ```
     """
     
     builder = _get_select(builder)

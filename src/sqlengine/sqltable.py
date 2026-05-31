@@ -5,13 +5,15 @@ import sqlite3
 from typing import Sequence, Literal, Any
 from typing import get_origin, get_args, overload, get_type_hints
 
-from .core import sqlgen as sql
-from .core.repr import to_html
+from .exceptions import TableDeclarationError
 
-from .core import ConnectionManager, Select, Update, Delete
-from .core.types import SqlRow, SqlValue, SqlType
-from .core.types import Schema, Primary
-from .core.types import register_resolve_types
+from ._internal import sqlgen as sql
+from ._internal.repr import to_html
+
+from ._internal import ConnectionManager, Select, Update, Delete
+from ._internal.types import SqlRow, SqlValue, ColumnType
+from ._internal.types import Schema, Primary
+from ._internal.types import register_resolve_types
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
@@ -23,50 +25,44 @@ class SqlTableMixin:
     
     Args:
         database (str): database filename to connect to. If it not exists - will create new one first.
-            If `":memory:"` is passed, then database will be created in memory and you will have to
+            If `":memory:"` is passed, then database will be set in memory and you will have to
             create table manually with `create_table()` method inside `transaction()` block.
         force_drop (bool): If `True` - will drop existing table.
-        **connection_params (dict): Params to create connection with. 
-            Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
+        **connection_params: Params to create connection with. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
 
     Attributes:
         __tablename__ (Optional[str]): Name of the table that will be used in queries. 
             If omitted in inherited class declaration, then it will take the class name.
-        __columns__ (list[str]): Colum names of the table
-        __types__ (list[SqlType | str]): Colum types of the table
+        __columns__ (list[str]): Column names of the table
+        __types__ (list[ColumnType]): Column types of the table
         __primary__ (list[str]): List of primary keys
 
     Examples:
-        >>> from sqlengine import SqlTableMixin, Primary
-        >>>
-        >>> class Employees(SqlTableMixin):
-        >>>     __columns__   = ["ID", "name", "surname", "salary", "position"]
-        >>>     __types__     = [int, str, str, float, "TEXT NOT NULL"]
-        >>>     __primary__   = ["ID", "name"]
-        >>> 
-        >>> table = Employees(":memory:")
-        >>>
-        >>>
-        >>> class Employees(SqlTableMixin):
-        >>>     ID       : Primary[int]
-        >>>     name     : Primary[str]
-        >>>     surname  : str | None
-        >>>     salary   : float | None
-        >>>     position : str
-        >>> 
-        >>> table = Employees("mydb.sqlite3")
+    ```python
+    from sqlengine import SqlTableMixin, Primary
+    
+    class Employees(SqlTableMixin):
+        ID       : Primary[int]
+        name     : Primary[str]
+        surname  : str   | None
+        salary   : float | None
+        position : str
+        
+    table = Employees("mydb.sqlite3")
+    ```
     """
 
     __tablename__ : str
     __columns__   : list[str]
-    __types__     : list[SqlType | str]
+    __types__     : list[ColumnType]
     __primary__   : list[str]
 
     def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
         
+        self.database = database
+
         resolved_types, connection_params = register_resolve_types(self.__types__, **connection_params)
 
-        self.database            = database
         self._connection_manager = ConnectionManager(database, **connection_params)
         self.__types_sql__       = resolved_types
 
@@ -90,7 +86,7 @@ class SqlTableMixin:
                 continue
             
             if name in columns:
-                raise AttributeError(f"Annotated column `{name}` is already in __columns__")
+                raise TableDeclarationError(f"Annotated column `{name}` is already in __columns__")
             
             columns.append(name)
             
@@ -99,12 +95,13 @@ class SqlTableMixin:
                 continue
 
             if name in primary:
-                raise AttributeError(f"Annotated primary column `{name}` is already in __primary__")
+                raise TableDeclarationError(f"Annotated primary column `{name}` is already in __primary__")
             
             primary_type = get_args(type_)[0]
 
             if not primary_type:
-                raise AttributeError("Primary type was declared without the type. Usage: `my_column : Primary[T]`, where T is desired type")
+                raise TableDeclarationError(("Primary type was declared without the type. "
+                "Usage: `my_column : Primary[T]`, where T is desired type"))
             
             types.append(primary_type)
             primary.append(name)
@@ -128,15 +125,15 @@ class SqlTableMixin:
         ]
 
         if missing_attrs:
-            raise AttributeError(f'{cls.__name__} is missing attributes: {missing_attrs}')
+            raise TableDeclarationError(f'{cls.__name__} is missing attributes: {missing_attrs}')
         
         n_types, n_cols = len(cls.__types__), len(cls.__columns__)
 
         if not n_types == n_cols:
-            raise AttributeError(f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}')
+            raise TableDeclarationError((f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}'))
         
         if len(cls.__primary__) < 1:
-            raise AttributeError(f'`__primary__`: Number of primary keys must be at least 1')
+            raise TableDeclarationError(f'`__primary__`: Number of primary keys must be at least 1')
         
         wrong_primaries = [
             prim for prim in cls.__primary__ if
@@ -144,7 +141,7 @@ class SqlTableMixin:
         ]
 
         if wrong_primaries:
-            raise AttributeError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
+            raise TableDeclarationError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
         
 
     def _write_db(self, force_drop : bool) -> None:
@@ -193,10 +190,12 @@ class SqlTableMixin:
             autocommit (bool): If `True`, will commit changes at the end of transaction
         
         Examples:
-
-            >>> with table.transaction():
-            >>>     for idx, age in table.select("ID", "Age"):
-            >>>         table.update("Age", age + 1).where.eq("ID", idx).then.execute()
+            
+        ```python
+        with table.transaction():
+            for idx, age in table.select("ID", "Age"):
+                table.update("Age", age + 1).where.eq("ID", idx).then.execute()
+        ```
         """
         
         return self._connection_manager.transaction(autocommit)
@@ -207,17 +206,22 @@ class SqlTableMixin:
         Insert single row
 
         Args:
-            *args (Any): Arguments in order of declared __columns__
-            **kwargs (Any): Unused
+            *args (SqlValue): Arguments in order of declared __columns__
+            **kwargs (SqlValue): Column to value mapping
 
-        Example:
-            >>> table = MyTable("mydb.db")
-            >>> table.columns 
-            >>> # ["ID", "Name", "Age"]
-            >>> table.insert(0, "Daniel", 27)
+        Examples:
+
+        ```python
+        table = MyTable("mydb.db")
+        table.columns # -> ["ID", "Name", "Age"]
+        table.insert(0, "Daniel", 27)
+        table.insert(ID=1, name="Boris", age=26)
+        ```
         """
-        query = sql.insert_row(self.tablename, self.columns)
-        self._connection_manager.execute(query, *args)
+        columns = self.columns[:len(args)]
+        columns.extend(kwargs.keys())
+        query = sql.insert_row(self.tablename, columns)
+        self._connection_manager.execute(query, *args, *kwargs.values())
 
     
     def upsert(self, *args, **kwargs) -> None:
@@ -226,18 +230,22 @@ class SqlTableMixin:
         via the declared `primary` key
         
         Args:
-            *args (Any): Arguments in order of declared __columns__
-            **kwargs (Any): Unused
+            **args (SqlValue): Arguments in order of declared __columns__
+            **kwargs (SqlValue): Column to value mapping
 
         Example:
-            >>> table = MyTable("mydb.db")
-            >>> table.columns 
-            >>> # ["ID", "Name", "Age"]
-            >>> table.upsert(0, "Daniel", 27)
-            >>> table.upsert(0, "Daniel", 21)
+
+        ```python
+        table = MyTable("mydb.db")
+        table.columns # -> ["ID", "Name", "Age"]
+        table.upsert(0, "Daniel", 27)
+        table.upsert(ID=0, age=21)
+        ```
         """
-        query = sql.upsert(self.tablename, self.columns, self.primary)
-        self._connection_manager.execute(query, *args)
+        columns = self.columns[:len(args)]
+        columns.extend(kwargs.keys())
+        query = sql.upsert(self.tablename, columns, self.primary)
+        self._connection_manager.execute(query, *args, *kwargs.values())
 
     
     def insert_many(self, rows: Sequence[SqlRow]) -> None:
@@ -386,19 +394,43 @@ class SqlTableMixin:
 
     @property
     def update(self) -> Update:
-        """ UPDATE statement builder and executor """
+        """ 
+        UPDATE statement builder and executor 
+        
+        Examples:
+        
+        ```python
+        table.update.set("City", "Karaganda").where.eq("Country", "Czech Republic").then.execute()
+        ```
+        """
         return Update(self.conn, self.schema)
 
     
     @property
     def delete(self) -> Delete:
-        """ DELETE statement builder and executor """
+        """ 
+        DELETE statement builder and executor 
+        
+        Examples:
+        
+        ```python
+        table.delete.where.eq("ID", 0).then.execute()
+        ```
+        """
         return Delete(self.conn, self.schema)
     
 
     @property
     def select(self) -> Select:
-        """ SELECT statement builder and fetcher """
+        """ 
+        SELECT statement builder and fetcher
+
+        Examples:
+        
+        ```python
+        table.select("Email").where.eq("SupportRepId", 3).then.aggregate("COUNT").fetchone()
+        ```
+        """
         return Select(self.conn, self.schema)
 
 
@@ -409,7 +441,7 @@ class SqlTableMixin:
 
     
     @property
-    def types(self) -> list[SqlType | str]:
+    def types(self) -> list[ColumnType]:
         """ List of table column dtypes as declared"""
         return self.__types__
     
@@ -452,7 +484,7 @@ class SqlTableMixin:
 
     @property
     def conn(self) -> ConnectionManager:
-        """  Access connection manager instance """
+        """ Access connection manager instance """
         return self._connection_manager
     
 

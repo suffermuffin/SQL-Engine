@@ -7,15 +7,18 @@ import sys
 import warnings
 
 from sqlengine       import schema, SqlTableMixin, Primary
+from sqlengine       import exceptions
 from sqlengine.utils import shared_connection
 
 from src.utils  import format_logging, download_file, CHINOOK_URL
-from src.tables import Employees, Coordinates, Point, coord_schema, COORDS_DATA, EMPLOYEES_DATA
+from src.tables import Employees, Coordinates, Point
+from src.tables import coord_schema, COORDS_DATA, EMPLOYEES_DATA
 
 
 TEST_DIR   = "temp/"
 CHINOOK_DB = "temp/chinook.db"
 TEST_DB    = "temp/test.db"
+TEST_CSV   = "temp/test.csv"
 LOG_LVL    = os.getenv("LOG_LEVEL", "CRITICAL").upper()
 
 _TEARDOWM = False
@@ -62,6 +65,9 @@ class TestSqlTable(unittest.TestCase):
 
         if os.path.exists(TEST_DB):
             os.remove(TEST_DB)
+
+        if os.path.exists(TEST_CSV):
+            os.remove(TEST_CSV)            
         
         if _TEARDOWM:
             remove_test_dir()
@@ -154,17 +160,17 @@ class TestSqlTable(unittest.TestCase):
     
     def test_transaction_nesting(self):
         
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.NestedTransactionError):
             with self.coord_table.transaction():
                 with self.coord_table.transaction():
                     pass
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.NestedTransactionError):
             with self.coord_table.transaction():
                 with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                     pass
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.NestedTransactionError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                 with self.coord_table.transaction():
                     pass
@@ -350,10 +356,10 @@ class TestSqlTable(unittest.TestCase):
 
 
     def test_unmanaged_connection_attrs(self):
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_cursor
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_conn
 
         self.empl_table.conn.open()
@@ -366,10 +372,10 @@ class TestSqlTable(unittest.TestCase):
 
         self.empl_table.conn.close()
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_cursor
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.OutsideTransactionError):
             self.empl_table.tx_conn
 
     
@@ -400,22 +406,22 @@ class TestSqlTable(unittest.TestCase):
 
     def test_transaction_edge_case(self):
         
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with self.empl_table.transaction():
                 self.empl_table.conn.close()
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with self.empl_table.transaction():
                 self.empl_table.conn.open()
 
     
     def test_shared_connection_edge_case(self):
         
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                 self.coord_table.conn.close()
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(exceptions.TransactionError):
             with shared_connection(self.coord_table, self.empl_table, **self.coord_table.connection_params):
                 self.empl_table.conn.open()
 
@@ -537,9 +543,9 @@ class TestSqlTable(unittest.TestCase):
                 .where\
                     .in_("SupportRepId", (3,4))\
                 .then\
-                .order_by("CustomerId")\
-                .limit(50)\
-                .fetchall()
+                    .order_by("CustomerId")\
+                    .limit(50)\
+                    .fetchall()
             
         table.conn.close()
 
@@ -550,8 +556,8 @@ class TestSqlTable(unittest.TestCase):
 
         table = schema.table_from_schema(":memory:", _schema)
         
-        _table.conn.open()
-        table.conn.open()
+        _table.open_connection()
+        table.open_connection()
         
         table.create_table()
 
@@ -562,7 +568,7 @@ class TestSqlTable(unittest.TestCase):
             
             table.commit()
 
-        _table.conn.close()
+        _table.close_connection()
         
         
         with self.subTest("Update cities"):
@@ -580,20 +586,20 @@ class TestSqlTable(unittest.TestCase):
             for row in rows:
                 self.assertEqual(new_city, row[0])
         
-        table.conn.close()
+        table.close_connection()
 
     
     def test_class_declaration(self):
         
-        with self.subTest("Should raise attr error as of no primaries"):
-            with self.assertRaises(AttributeError):
+        with self.subTest("Should raise TableDeclarationError error as of no primaries"):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable1(SqlTableMixin):
                     val : str
                     key : int
             
         
-        with self.subTest("Should raise attr error as N is not declared in columns"):
-            with self.assertRaises(AttributeError):
+        with self.subTest("Should raise TableDeclarationError error as N is not declared in columns"):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable2(SqlTableMixin):
                     val : str
                     key : Primary[int]
@@ -601,8 +607,8 @@ class TestSqlTable(unittest.TestCase):
                     __primary__ = ['N']
             
         
-        with self.subTest("Should raise attr error as of double declaration of columns"):
-            with self.assertRaises(AttributeError):
+        with self.subTest("Should raise TableDeclarationError error as of double declaration of columns"):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable3(SqlTableMixin):
                     val : str
                     key : Primary[int]
@@ -611,13 +617,30 @@ class TestSqlTable(unittest.TestCase):
                     __types__   = [str, "INTEGER"]
 
         
-        with self.subTest("Should raise attr error as of double declaration of primaries"):
-            with self.assertRaises(AttributeError):
+        with self.subTest("Should raise TableDeclarationError error as of double declaration of primaries"):
+            with self.assertRaises(exceptions.TableDeclarationError):
                 class EdgeCaseTable4(SqlTableMixin):
                     val : str
                     key : Primary[int]
 
                     __primary__ = ["key"]
+
+        
+        with self.subTest("Should raise type error as of wrong union"):
+            with self.assertRaises(TypeError):
+                class EdgeCaseTable6(SqlTableMixin):
+                    val : str | int
+                    key : Primary[int]
+
+                table = EdgeCaseTable6(":memory:")
+
+        
+        with self.subTest("Should work, why not"):
+            class EdgeCaseTable7(SqlTableMixin):
+                val : str
+                key : Primary[int | None]
+
+            table = EdgeCaseTable7(":memory:")
 
         
         with self.subTest("Should work"):
@@ -682,8 +705,120 @@ class TestSqlTable(unittest.TestCase):
                 dt = table.select("time_at").fetchone()[0]
                 
                 self.assertIsInstance(dt, DateTime)
-
     
+
+    def test_kwargs_insert(self):
+
+        class Homies(SqlTableMixin):
+
+            __columns__   = ["ID", "Name", "Age"]
+            __types__     = [int, str | None, int | None]
+            __primary__   = ["ID"]
+
+        table = Homies(":memory:")
+
+        with table.transaction():
+            table.create_table()
+            
+            iidx, iage, iname = (0, 20, "John")
+            table.insert(ID=iidx, Age=iage, Name=iname)
+            idx, name, age = table[iidx]
+
+            self.assertEqual(idx,  iidx)
+            self.assertEqual(name, iname)
+            self.assertEqual(age,  iage)
+
+            uidx, uage = (1, 14)
+            table.upsert(ID=uidx, age=uage)
+            idx, name, age = table[uidx]
+
+            self.assertEqual(idx,  uidx)
+            self.assertIsNone(name)
+            self.assertEqual(age,  uage)
+
+            uidx, uage = (1, 20)
+            table.upsert(uidx, age=uage)
+            idx, name, age = table[uidx]
+
+            self.assertEqual(idx,  uidx)
+            self.assertIsNone(name)
+            self.assertEqual(age,  uage)
+
+            uname = "Boris"
+            table.upsert(uidx, name=uname)
+            idx, name, age = table[uidx]
+
+            self.assertEqual(idx,  uidx)
+            self.assertEqual(name, uname)
+            self.assertEqual(age,  uage)
+
+
+    def test_conversions(self):
+
+        from sqlengine.utils import to_csv, to_dicts, to_dicts_stream
+        
+        table = self.coord_table
+
+        def validate_indicies(data : list[tuple], path : str):
+            with open(path, 'r') as f:
+                for i, line in enumerate(f.readlines()):
+                    row = line.strip().split(',')
+                    if i == 0:
+                        self.assertEqual(row, table.columns)
+                        continue
+                    self.assertEqual(data[i-1][0], int(row[0]))
+
+        
+        _half = len(COORDS_DATA)//2
+        data_1, data_2  = COORDS_DATA[_half:], COORDS_DATA[:_half]
+
+        with table.transaction(autocommit=False):
+
+            with self.subTest("Csv One Shot"):
+                table.insert_many(data_1)
+                to_csv(table, TEST_CSV)
+                
+                validate_indicies(data_1, TEST_CSV)
+
+            table.rollback()
+
+            with self.subTest("Strean Csv"):
+                table.insert_many(data_2)
+                to_csv(table, TEST_CSV, stream_batch_size=2)
+
+                validate_indicies(data_2, TEST_CSV)
+                
+            table.rollback()
+
+            with self.subTest("Dict One Shot"):
+                table.insert_many(data_1)
+                dicts = to_dicts(table)
+
+                self.assertEqual(len(dicts), len(data_1))
+
+                for dict_, data in zip(dicts, data_1):
+                    self.assertEqual(table.columns, list(dict_.keys()))
+                    self.assertEqual(data, tuple(dict_.values()))
+            
+            table.rollback()
+
+            with self.subTest("Dict Stream"):
+                
+                batch_size = 2
+                table.insert_many(data_2)
+                
+                assert len(table) == len(data_2)
+
+                result : list[dict] = []
+                
+                for batch in to_dicts_stream(table, batch_size):
+                    result.extend(batch)
+
+                for dict_, data in zip(result, data_2):
+                    self.assertEqual(table.columns, list(dict_.keys()))
+                    self.assertEqual(data, tuple(dict_.values()))
+                
+
     # Generated
     
     def test_where_basic_equality(self):
@@ -828,7 +963,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertEqual(max_, 144.4)
 
         # multi aggregation
-        with self.assertRaises(ValueError):
+        with self.assertRaises(exceptions.SqlEngineError):
             table.select.aggregate("COUNT").aggregate("SUM")
 
     
@@ -896,7 +1031,7 @@ class TestSqlTable(unittest.TestCase):
         self.assertIsNone(table[7])
 
         # Can't delete without where
-        with self.assertRaises(ValueError):
+        with self.assertRaises(exceptions.SqlEngineError):
             table.delete.execute()
 
 

@@ -6,6 +6,7 @@ from typing import overload, Literal, Sequence
 from contextlib import contextmanager
 
 from .types import SqlValue, SqlRow
+from ..exceptions import TransactionError, NestedTransactionError, OutsideTransactionError
 
 
 logger = logging.getLogger("sqlengine")
@@ -13,6 +14,16 @@ logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 
 class ConnectionManager:
+
+    """ 
+    Connection manager for sqlite3 
+    
+    Args:
+
+        database (str): database filename to connect to. If `":memory:"` is passed, then database will be set in memory and you will have to
+            create table manually with `create_table()` method inside `transaction()` block.
+        **connection_params: Params to create connection with. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
+    """
 
     _trans : sqlite3.Connection
     _trans_cursor : sqlite3.Cursor
@@ -172,7 +183,7 @@ class ConnectionManager:
     def open(self) -> None:
         """ Opens unmanaged transaction """
         if self.in_transaction():
-            raise RuntimeError("Can't re-open existing connection")
+            raise NestedTransactionError("Can't re-open existing connection")
         
         self._trans = self.connect()
         self._trans_cursor = self._trans.cursor()
@@ -184,7 +195,7 @@ class ConnectionManager:
             return
         
         if self._is_managed_transaction:
-            raise RuntimeError("Can't manually close managed transaction")
+            raise TransactionError("Can't manually close managed transaction")
         
         self._trans_cursor.close()
         self._trans.close()
@@ -194,14 +205,14 @@ class ConnectionManager:
 
     def commit(self) -> None:
         if not self.in_transaction():
-            raise RuntimeError("Can't commit outside transaction mode")
+            raise OutsideTransactionError("Can't commit outside transaction mode")
         
         self._trans.commit()
 
 
     def rollback(self) -> None:
         if not self.in_transaction():
-            raise RuntimeError("Can't rollback outside transaction mode")
+            raise OutsideTransactionError("Can't rollback outside transaction mode")
         
         self._trans.rollback()
     
@@ -242,7 +253,7 @@ class ConnectionManager:
     def tx_conn(self) -> sqlite3.Connection:
         """ Gives access to connection while in transaction """
         if not self.in_transaction():
-            raise RuntimeError("`tx_conn` is not available outside the transaction mode")
+            raise OutsideTransactionError("`tx_conn` is not available outside the transaction mode")
         return self._trans
     
     
@@ -250,6 +261,6 @@ class ConnectionManager:
     def tx_cursor(self) -> sqlite3.Cursor:
         """ Gives access to connection cursor while in transaction """
         if not self.in_transaction():
-            raise RuntimeError("`tx_cursor` is not available outside the transaction mode")
+            raise OutsideTransactionError("`tx_cursor` is not available outside the transaction mode")
         return self._trans_cursor
 

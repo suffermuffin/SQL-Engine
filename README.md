@@ -15,6 +15,7 @@
   - [Get Item](#get-item)
   - [Custom Types](#custom-types)
   - [Csv Converter](#csv-converter)
+  - [Pandas-like Converter](#pandas-like-converter)
 - [Full Documentation](#full-documentation)
 
 
@@ -115,25 +116,19 @@ More details at [Declaration](https://github.com/suffermuffin/SQL-Engine/blob/ma
 from sqlengine import SqlTableMixin, Primary
 
 # Helper constants for column names
-ID = "ID"
-Name = "Name"
+ID         = "ID"
+Name       = "Name"
 Occupation = "Occupation"
-Salary = "Salary"
+Salary     = "Salary"
 
 
 class Employees(SqlTableMixin):
 
     ID         : Primary[int]
-    Name       : str
+    Name       : str | None
     Occupation : str
     Salary     : float
 
-    # You may overwrite your insert methods for type consistency
-    def insert(self, id : int, name : str, occupation : str, salary : float) -> None:
-        return super().insert(id, name, occupation, salary)
-    
-    def upsert(self, id : int, name : str, occupation : str, salary : float) -> None:
-        return super().upsert(id, name, occupation, salary)
 ```
 
 ## Instantiation
@@ -157,10 +152,15 @@ table.insert(1, "John Doe", "Software Engineer", 75000.0)
 ```
 
 ```py
+# Use kwargs mapping to insert/upsert one row
+
+table.insert(2, salary=80000.0, name="Jane Smith", occupation="Data Scientist")
+```
+
+```py
 # Bulk insert multiple rows
 
 employees_data = [
-    (2, "Jane Smith", "Data Scientist", 80000.0),
     (3, "Alice Johnson", "Product Manager", 90000.0),
     (4, "Bob Brown", "Project Manager", 78000.0),
     (5, "Charlie Davis", "UI/UX Designer", 65000.0),
@@ -310,8 +310,38 @@ to_csv(table, "temp/table.csv")
 
 ```py
 # Save query result to csv
-
 to_csv(table.select.where.gt(Salary, 70_000), "temp/query.csv")
+```
+
+```py
+# Stream to csv
+with table.transaction():
+    to_csv(table, "temp/query.csv", stream_batch_size=1000)
+```
+
+## Pandas-like Converter
+
+```py
+# via one shot
+import pandas as pd
+from sqlengine.utils import to_dicts
+
+df = pd.DataFrame(to_dicts(table))
+df.set_index("ID", inplace=True)
+```
+
+```py
+# via generator
+import pandas as pd
+from sqlengine.utils import to_dicts_stream
+
+df = pd.DataFrame(columns=table.columns)
+
+with table.transaction():
+    for batch in to_dicts_stream(table, batch_size=1000):
+        df = pd.concat([df, pd.DataFrame(batch)], axis=0)
+
+df.set_index("ID", inplace=True)
 ```
 
 # Full Documentation

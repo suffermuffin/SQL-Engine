@@ -2,10 +2,11 @@ from typing import Sequence, Literal, Generator, Self
 from abc    import ABC, abstractmethod
 
 from . import sqlgen as sql
-from .connection import ConnectionManager
+from .connection_manager import ConnectionManager
 
 from .types import SqlValue, SqlRow, Schema
 from .repr  import to_html
+from ..exceptions import SqlEngineError, OutsideTransactionError
 
 
 class Where[T : "Statement"]:
@@ -146,7 +147,7 @@ class Statement(ABC):
 
         self._tableschema = tableschema
         self._connection  = connection
-        self._where: Where[Self] = Where(self)
+        self._where = Where(self)
 
         self._custom_query : str | None = None
         self._custom_args  : tuple[SqlValue, ...] = ()
@@ -206,6 +207,7 @@ class Statement(ABC):
 class MutationalStatement(Statement, ABC):
     
     def execute(self) -> None:
+        """ Execute built statement """
         query, args = self.build()
         self._connection.execute(query, *args)
 
@@ -222,46 +224,52 @@ class Select(Statement):
 
 
     def __call__(self, *columns : str) -> Self:
+        """ Shortcut to columns selector """
         return self.columns(*columns)
     
 
     def columns(self, *columns : str) -> Self:
-        """ Column selector """
+        """ Columns selector """
         self._columns.extend(columns)
         return self
     
     
     def aggregate(self, by : Literal['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']) -> Self:
-        
+        """ Aggregate by provided method """
         if self._aggregate:
-            raise ValueError("Can't aggregate columns multiple times")
+            raise SqlEngineError("Can't aggregate columns multiple times")
         
         self._aggregate = by
         return self
 
     
     def order_by(self, column : str, ascending : bool = True) -> Self:
+        """ Orders returned rows by provided column """
         order = "ASC" if ascending else "DESC"
         self._order_by.append(f"{column} {order}")
         return self
     
 
     def limit(self, n : int) -> Self:
+        """ Limit number of returned rows """
         self._limit = n
         return self
     
 
     def fetchone(self) -> SqlRow:
+        """ Fetch first row """
         query, args = self.build()
         return self._connection.fetchone(query, *args)
         
 
     def fetchmany(self, size : int = 1) -> list[SqlRow]:
+        """ Fetch first `size` rows """
         query, args = self.build()
         return self._connection.fetchmany(query, *args, size=size)
 
     
     def fetchall(self) -> list[SqlRow]:
+        """ Fetch all rows """
         query, args = self.build()
         return self._connection.fetchall(query, *args)
     
@@ -275,13 +283,15 @@ class Select(Statement):
 
         Examples:
 
-            >>> with table.transaction():
-            >>>     for batch in table.select.where.gt("Age", 30).then.fetchmany_iterator(1000):
-            >>>         process_batch(batch)
+        ```python
+        with table.transaction():
+            for batch in table.select.where.gt("Age", 30).then.fetchmany_iterator(1000):
+                process_batch(batch)
+        ```
         """
         if not self._connection.in_transaction():
-            raise RuntimeError("To use the `fetchall_iterator()` method you have \
-                    to keep open the transaction of the table with `transaction()` manager")
+            raise OutsideTransactionError("To use the `fetchall_iterator()` method you have \
+                    to keep open the transaction of the table")
         
         query, exec_args = self.build()
 
@@ -293,11 +303,22 @@ class Select(Statement):
 
     
     def __iter__(self) -> Generator[SqlRow, None, None]:
-        """ Select statement rows iterator """
+        """ 
+        Select statement rows iterator
+
+        Examples:
+        
+        ```python
+        with table.transaction():
+            # here `then` is used to link back to the `select` instance from `where` object
+            for row in table.select.where.gt("Age", 30).then: 
+                process_row(row)
+        ```
+        """
         
         if not self._connection.in_transaction():
-            raise RuntimeError("To use the __iter__ method you have \
-                to keep open the transaction of the table with `transaction()` manager")
+            raise OutsideTransactionError("To use the __iter__ method you have \
+                to keep open the transaction of the table")
         
         query, exec_args = self.build()
         
@@ -360,7 +381,7 @@ class Delete(MutationalStatement):
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
         
         if not where_clause:
-            raise ValueError("Delete statement must have a where clause")
+            raise SqlEngineError("Delete statement must have a where clause")
         
         query = sql.delete_rows(self._tableschema["tablename"], where_clause)
         return query, args
@@ -379,6 +400,7 @@ class Update(MutationalStatement):
 
     
     def __call__(self, column : str, value : SqlValue) -> Self:
+        """ Shortcut to set value to a column """
         return self.set(column, value)
 
 

@@ -4,8 +4,9 @@ import sqlite3
 
 from contextlib import contextmanager
 
-from ..sqltable import SqlTableMixin
-from ..core.connection import ConnectionManager
+from ..sqltable   import SqlTableMixin
+from .._internal  import ConnectionManager
+from ..exceptions import NestedTransactionError
 
 
 logger = logging.getLogger("sqlengine")
@@ -26,11 +27,13 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
     
     Examples:
 
-        >>> from sqlengine.utils import shared_connection
-        >>> with shared_connection(table1, table2, **table1.connection_params):
-        >>>     for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
-        >>>         if id1 == id2:
-        >>>             table.update.where.eq("ID", id2).then.set("Salary", temp).execute()
+    ```python
+    from sqlengine.utils import shared_connection
+    with shared_connection(table1, table2, **table1.connection_params):
+        for (id1,), (id2, temp) in zip(table1.select("ID").limit(20), table2.select("ID", "Temperature").limit(20)):
+            if id1 == id2:
+                table.update.where.eq("ID", id2).then.set("Salary", temp).execute()
+    ```
     """
 
     tables_in_trans = [
@@ -38,7 +41,7 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
     ]
     
     if tables_in_trans:
-        raise RuntimeError(f"Tables {tables_in_trans} are already in transaction")
+        raise NestedTransactionError(f"Tables {tables_in_trans} are already in transaction")
     
     unique_databases = set(table.database for table in args)
     database_map : dict[str, list[ConnectionManager]] = {}

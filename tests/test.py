@@ -385,23 +385,15 @@ class TestSqlTable(unittest.TestCase):
         conn = self.empl_table.tx_conn
         conn.close()
 
-        with self.assertRaises(sqlite3.ProgrammingError):
+        with self.assertRaises(exceptions.TransactionError):
             self.empl_table.conn.close()
-
-        # additional teardown
-        delattr(self.empl_table.conn, "_trans_cursor")
-        delattr(self.empl_table.conn, "_trans")
 
     
     def test_transaction_attr_manip_edge_case(self):
 
-        with self.assertRaises(sqlite3.ProgrammingError):
+        with self.assertRaises(exceptions.TransactionError):
             with self.empl_table.transaction():
                 self.empl_table.tx_conn.close()
-
-        # additional teardown
-        delattr(self.empl_table.conn, "_trans_cursor")
-        delattr(self.empl_table.conn, "_trans")
 
 
     def test_transaction_edge_case(self):
@@ -817,7 +809,31 @@ class TestSqlTable(unittest.TestCase):
                 for dict_, data in zip(result, data_2):
                     self.assertEqual(table.columns, list(dict_.keys()))
                     self.assertEqual(data, tuple(dict_.values()))
-                
+    
+    
+    def test_sql_types(self):
+
+        class SomeTable(SqlTableMixin):
+
+            user_id : Primary[int]
+            room_id : None  | int
+            user_name : str | None
+            id_room   : int
+            name_user : str
+
+        table = SomeTable(":memory:")
+
+        self.assertEqual(
+            table.types_sql, 
+            [
+                "INTEGER NOT NULL",
+                "INTEGER",
+                "TEXT",
+                "INTEGER NOT NULL",
+                "TEXT NOT NULL"
+            ]
+        )
+    
 
     # Generated
     

@@ -26,10 +26,10 @@ My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without
 
 ## Features
 
-Abstracts SQL queries into tiny little methods like, `insert`, `insert_many`, `upsert`, and not so little and tiny query builders a-la `select`, `delete`, `update`, etc. Sql-Engine also provides bulk insertion and transaction methods, like `insert_many` and `select.fetchmany_iterator`. Methods can be executed in transaction mode thanks to `transaction` context manager.
+`sqlengine` abstracts SQL queries into tiny little methods like `insert`, `insert_many`, `upsert`, and not so tiny (but still cute and small) query builders like `select`, `delete` and `update`. Sql-Engine also provides bulk insertion with `insert_many` and transaction operations like `select.fetchmany_iterator`. Methods can be executed either in transaction mode (thanks to `transaction` context manager) or right on the spot.
 
 
-Sql-Engine implements Jupyter integration and dynamic schema building. You can easily instantiate existing database table and view it in cute little html representation.
+Sql-Engine implements Jupyter integration and dynamic schema building. You can easily instantiate existing database table and view it in a cute little html representation.
 
 ```py
 from sqlengine import schema
@@ -64,15 +64,24 @@ table.select("InvoiceId", "CustomerId", "BillingAddress", "BillingCountry", "Tot
 
 It's a tiny little modern ORM-like that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own queries which might not be paramerized with methods like `select.custom()` and `where.custom()`.
 
-And last (but not least) is data inspection. If you need to quickly inspect existing .db file but don't want to install yet another heavy ORM with a lot of unused dependencies, you might look into Sql-Engine, as it uses only native python modules.
+And last (but not least) is data inspection. If you need to quickly inspect existing .db file but don't want to install yet another heavy ORM with a lot of unused dependencies and features, you might look into Sql-Engine, as it uses only native python modules.
 
 
 ## Installation
 
 To install `sqlengine`, you can use `pip`:
 
-```sh
+```bash
 pip install sqlengine-lite
+```
+
+Or you can install it from source if you want to contribute
+
+```bash
+git clone https://github.com/suffermuffin/SQL-Engine.git
+cd SQL-Engine
+uv sync
+git checkout -b "<your_feature_or_fix_name>"
 ```
 
 ## Env

@@ -32,39 +32,46 @@ class Where[T : "Statement"]:
 
     
     def op(self, column : str, value : SqlValue, operator : str) -> Self:
+        """ Adds operator to the where clause """
         self._clause.append(f"{column} {operator} ?")
         self._args.append(value)
         return self
 
     
     def join(self, lop : str = "AND") -> Self:
-        """ Joins previous expression via logical operator `lop` """
+        """ Join previous expression via logical operator `lop` """
         joined = f" {lop} ".join(self._clause)
         self._clause = [f"({joined})"]
         return self
 
     
     def eq(self, column : str, value : SqlValue) -> Self:
+        """ Add `column = value` to the where clause """
         return self.op(column, value, "=")
 
     
     def neq(self, column : str, value : SqlValue) -> Self:
+        """ Add `column != value` to the where clause """
         return self.op(column, value, "!=")
     
     
     def gt(self, column : str, value : SqlValue) -> Self:
+        """ Add `column > value` to the where clause """
         return self.op(column, value, ">")
     
     
     def gte(self, column : str, value : SqlValue) -> Self:
+        """ Add `column >= value` to the where clause """
         return self.op(column, value, ">=")
     
     
     def lt(self, column : str, value : SqlValue) -> Self:
+        """ Add `column < value` to the where clause """
         return self.op(column, value, "<")
     
     
     def lte(self, column : str, value : SqlValue) -> Self:
+        """ Add `column <= value` to the where clause """
         return self.op(column, value, "<=")
     
     
@@ -77,12 +84,13 @@ class Where[T : "Statement"]:
     
     
     def is_null(self, column : str) -> Self:
+        """ Add `column IS NULL` to the where clause """
         self._clause.append(f"{column} IS NULL")
         return self
     
     
     def inverted(self) -> Self:
-        """ Invert last where clause with NOT """
+        """ Invert previous where clauses with `NOT` """
         self._clause[-1] = f"NOT ({self._clause[-1]})"
         return self
     
@@ -276,12 +284,12 @@ class Select(Statement):
 
     def fetchmany_iterator(self, batch_size: int) -> Generator[list[SqlRow], None, None]:
         """
-        Yields all rows in batches, each batch in its own transaction.
+        Yields all rows in batches within a single transaction.
         
         Args:
             batch_size (int): Size of each batch
 
-        Examples:
+        Example:
 
         ```python
         with table.transaction():
@@ -306,7 +314,7 @@ class Select(Statement):
         """ 
         Select statement rows iterator
 
-        Examples:
+        Example:
         
         ```python
         with table.transaction():
@@ -317,7 +325,7 @@ class Select(Statement):
         """
         
         if not self._connection.in_transaction():
-            raise OutsideTransactionError("To use the __iter__ method you have \
+            raise OutsideTransactionError("To use the `__iter__` method you have \
                 to keep open the transaction of the table")
         
         query, exec_args = self.build()

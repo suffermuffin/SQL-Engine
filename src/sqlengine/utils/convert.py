@@ -4,6 +4,7 @@ from typing import Generator
 from ..sqltable import SqlTableMixin
 from .._internal.statements import Where, Select
 from .._internal.types import SqlValue
+from ..exceptions import OutsideTransactionError, SqlEngineError
 
 
 def _get_select(builder : Select | Where[Select] | SqlTableMixin) -> Select:
@@ -30,16 +31,16 @@ def to_csv(
     Args:
         builder (Select | Where[Select] | SqlTableMixin): Object to convert to csv
         filename (str): Path to write to
-        stream_bach_size (int | None): If not None or 0, will stream all rows to csv in batches of provided size
+        stream_batch_size (int | None): If not None or 0, will stream all rows to csv in batches of provided size
     """
     
     builder = _get_select(builder)
 
     if builder._aggregate:
-        raise AssertionError("Aggregated queries are not supported")
+        raise SqlEngineError("Aggregated queries are not supported")
     
     if stream_batch_size and not builder._connection.in_transaction():
-        raise RuntimeError("To stream to csv you have to keep open the `transaction`")
+        raise OutsideTransactionError("To stream to csv you have to keep open the `transaction`")
     
     columns = builder._resolve_columns()
     
@@ -66,19 +67,19 @@ def to_dicts(builder : Select | Where[Select] | SqlTableMixin) -> list[dict[str,
     Returns:
         out (list[dict[str, SqlValue]]): list of rows mappings
     
-    Examples:
+    Example:
 
     ```python
     import pandas as pd
     
-    df = pd.DataFrame(to_dict(table))
+    df = pd.DataFrame(to_dicts(table))
     ```
     """
     
     builder = _get_select(builder)
 
     if builder._aggregate:
-        raise AssertionError("Aggregated queries are not supported")
+        raise SqlEngineError("Aggregated queries are not supported")
     
     columns = builder._resolve_columns()
     rows = builder.fetchall()
@@ -95,12 +96,12 @@ def to_dicts_stream(
 
     Args:
         builder (Select | Where[Select] | SqlTableMixin): Object to convert to list of dicts
-        batch_size (int): Size of each yiedled batch
+        batch_size (int): Size of each yielded batch
 
     Yields:
         batch (list[dict[str, SqlValue]]): list of rows mappings
     
-    Examples:
+    Example:
 
     ```python
     import pandas as pd
@@ -108,7 +109,7 @@ def to_dicts_stream(
     df = pd.DataFrame(columns=table.columns)
     
     with table.transaction():
-        for batch in to_dict_stream(table, 100):
+        for batch in to_dicts_stream(table, 100):
             df = pd.concat([df, pd.DataFrame(batch)], axis=0)
     
     df.set_index("ID", inplace=True)
@@ -118,10 +119,10 @@ def to_dicts_stream(
     builder = _get_select(builder)
 
     if builder._aggregate:
-        raise AssertionError("Aggregated queries are not supported")
+        raise SqlEngineError("Aggregated queries are not supported")
     
     if not builder._connection.in_transaction():
-        raise RuntimeError("To stream to csv you have to keep open the `transaction`")
+        raise OutsideTransactionError("To stream to csv you have to keep open the `transaction`")
     
     columns = builder._resolve_columns()
 

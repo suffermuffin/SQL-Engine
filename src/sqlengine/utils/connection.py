@@ -25,7 +25,7 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
         **connection_params (dict): Params to create connections with. This argument will be shared
             across different connections. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
     
-    Examples:
+    Example:
 
     ```python
     from sqlengine.utils import shared_connection

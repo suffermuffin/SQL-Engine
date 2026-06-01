@@ -24,7 +24,7 @@ class SqlTableMixin:
     Lightweight wrapper for SQLite3 tables
     
     Args:
-        database (str): database filename to connect to. If it not exists - will create new one first.
+        database (str): database filename to connect to. If it does not exists - will create new one first.
             If `":memory:"` is passed, then database will be set in memory and you will have to
             create table manually with `create_table()` method inside `transaction()` block.
         force_drop (bool): If `True` - will drop existing table.
@@ -37,7 +37,7 @@ class SqlTableMixin:
         __types__ (list[ColumnType]): Column types of the table
         __primary__ (list[str]): List of primary keys
 
-    Examples:
+    Example:
     ```python
     from sqlengine import SqlTableMixin, Primary
     
@@ -189,7 +189,7 @@ class SqlTableMixin:
         Args:
             autocommit (bool): If `True`, will commit changes at the end of transaction
         
-        Examples:
+        Example:
             
         ```python
         with table.transaction():
@@ -209,7 +209,7 @@ class SqlTableMixin:
             *args (SqlValue): Arguments in order of declared __columns__
             **kwargs (SqlValue): Column to value mapping
 
-        Examples:
+        Example:
 
         ```python
         table = MyTable("mydb.db")
@@ -397,7 +397,7 @@ class SqlTableMixin:
         """ 
         UPDATE statement builder and executor 
         
-        Examples:
+        Example:
         
         ```python
         table.update.set("City", "Karaganda").where.eq("Country", "Czech Republic").then.execute()
@@ -411,7 +411,7 @@ class SqlTableMixin:
         """ 
         DELETE statement builder and executor 
         
-        Examples:
+        Example:
         
         ```python
         table.delete.where.eq("ID", 0).then.execute()
@@ -425,7 +425,7 @@ class SqlTableMixin:
         """ 
         SELECT statement builder and fetcher
 
-        Examples:
+        Example:
         
         ```python
         table.select("Email").where.eq("SupportRepId", 3).then.aggregate("COUNT").fetchone()

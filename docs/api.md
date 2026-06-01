@@ -39,7 +39,7 @@ Lightweight wrapper for SQLite3 tables
 
 **Arguments**:
 
-- `database` _str_ - database filename to connect to. If it not exists - will create new one first.
+- `database` _str_ - database filename to connect to. If it does not exists - will create new one first.
   If `":memory:"` is passed, then database will be set in memory and you will have to
   create table manually with `create_table()` method inside `transaction()` block.
 - `force_drop` _bool_ - If `True` - will drop existing table.
@@ -55,7 +55,7 @@ Lightweight wrapper for SQLite3 tables
 - `__primary__` _list[str]_ - List of primary keys
   
 
-**Examples**:
+**Example**:
 
 ```python
 from sqlengine import SqlTableMixin, Primary
@@ -105,7 +105,7 @@ Creates context manager to use class methods in transaction
 - `autocommit` _bool_ - If `True`, will commit changes at the end of transaction
   
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -130,7 +130,7 @@ Insert single row
 - `**kwargs` _SqlValue_ - Column to value mapping
   
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -264,7 +264,7 @@ def update() -> Update
 
 UPDATE statement builder and executor
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -282,7 +282,7 @@ def delete() -> Delete
 
 DELETE statement builder and executor
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -300,7 +300,7 @@ def select() -> Select
 
 SELECT statement builder and fetcher
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -514,7 +514,7 @@ manipulating their transaction attributes
   across different connections. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
   
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -545,7 +545,7 @@ Writes query or whole table to a csv file
 
 - `builder` _Select | Where[Select] | SqlTableMixin_ - Object to convert to csv
 - `filename` _str_ - Path to write to
-- `stream_bach_size` _int | None_ - If not None or 0, will stream all rows to csv in batches of provided size
+- `stream_batch_size` _int | None_ - If not None or 0, will stream all rows to csv in batches of provided size
 
 <a id="sqlengine.utils.convert.to_dicts"></a>
 
@@ -569,13 +569,13 @@ Converts query or whole table to pandas friendly format
 - `out` _list[dict[str, SqlValue]]_ - list of rows mappings
   
 
-**Examples**:
+**Example**:
 
   
 ```python
 import pandas as pd
 
-df = pd.DataFrame(to_dict(table))
+df = pd.DataFrame(to_dicts(table))
 ```
 
 <a id="sqlengine.utils.convert.to_dicts_stream"></a>
@@ -593,7 +593,7 @@ Converts query or whole table to pandas friendly format and yields it in batches
 **Arguments**:
 
 - `builder` _Select | Where[Select] | SqlTableMixin_ - Object to convert to list of dicts
-- `batch_size` _int_ - Size of each yiedled batch
+- `batch_size` _int_ - Size of each yielded batch
   
 
 **Yields**:
@@ -601,7 +601,7 @@ Converts query or whole table to pandas friendly format and yields it in batches
 - `batch` _list[dict[str, SqlValue]]_ - list of rows mappings
   
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -610,7 +610,7 @@ import pandas as pd
 df = pd.DataFrame(columns=table.columns)
 
 with table.transaction():
-    for batch in to_dict_stream(table, 100):
+    for batch in to_dicts_stream(table, 100):
         df = pd.concat([df, pd.DataFrame(batch)], axis=0)
 
 df.set_index("ID", inplace=True)
@@ -651,6 +651,16 @@ def __call__(where_clasuse: str, *args: SqlValue) -> Self
 
 Shortcut to custom where clause
 
+<a id="sqlengine._internal.statements.Where.op"></a>
+
+#### op
+
+```python
+def op(column: str, value: SqlValue, operator: str) -> Self
+```
+
+Adds operator to the where clause
+
 <a id="sqlengine._internal.statements.Where.join"></a>
 
 #### join
@@ -659,7 +669,67 @@ Shortcut to custom where clause
 def join(lop: str = "AND") -> Self
 ```
 
-Joins previous expression via logical operator `lop`
+Join previous expression via logical operator `lop`
+
+<a id="sqlengine._internal.statements.Where.eq"></a>
+
+#### eq
+
+```python
+def eq(column: str, value: SqlValue) -> Self
+```
+
+Add `column = value` to the where clause
+
+<a id="sqlengine._internal.statements.Where.neq"></a>
+
+#### neq
+
+```python
+def neq(column: str, value: SqlValue) -> Self
+```
+
+Add `column != value` to the where clause
+
+<a id="sqlengine._internal.statements.Where.gt"></a>
+
+#### gt
+
+```python
+def gt(column: str, value: SqlValue) -> Self
+```
+
+Add `column > value` to the where clause
+
+<a id="sqlengine._internal.statements.Where.gte"></a>
+
+#### gte
+
+```python
+def gte(column: str, value: SqlValue) -> Self
+```
+
+Add `column >= value` to the where clause
+
+<a id="sqlengine._internal.statements.Where.lt"></a>
+
+#### lt
+
+```python
+def lt(column: str, value: SqlValue) -> Self
+```
+
+Add `column < value` to the where clause
+
+<a id="sqlengine._internal.statements.Where.lte"></a>
+
+#### lte
+
+```python
+def lte(column: str, value: SqlValue) -> Self
+```
+
+Add `column <= value` to the where clause
 
 <a id="sqlengine._internal.statements.Where.like"></a>
 
@@ -672,6 +742,16 @@ def like(column: str, pattern: str) -> Self
 Like operator. Pattern is a SQL wildcard pattern 
 (i.e. `%` for any string, `_` for one character).
 
+<a id="sqlengine._internal.statements.Where.is_null"></a>
+
+#### is\_null
+
+```python
+def is_null(column: str) -> Self
+```
+
+Add `column IS NULL` to the where clause
+
 <a id="sqlengine._internal.statements.Where.inverted"></a>
 
 #### inverted
@@ -680,7 +760,7 @@ Like operator. Pattern is a SQL wildcard pattern
 def inverted() -> Self
 ```
 
-Invert last where clause with NOT
+Invert previous where clauses with `NOT`
 
 <a id="sqlengine._internal.statements.Where.custom"></a>
 
@@ -857,14 +937,14 @@ Fetch all rows
 def fetchmany_iterator(batch_size: int) -> Generator[list[SqlRow], None, None]
 ```
 
-Yields all rows in batches, each batch in its own transaction.
+Yields all rows in batches within a single transaction.
 
 **Arguments**:
 
 - `batch_size` _int_ - Size of each batch
   
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -883,7 +963,7 @@ def __iter__() -> Generator[SqlRow, None, None]
 
 Select statement rows iterator
 
-**Examples**:
+**Example**:
 
   
 ```python
@@ -938,8 +1018,7 @@ Connection manager for sqlite3
 **Arguments**:
 
   
-- `database` _str_ - database filename to connect to. If `":memory:"` is passed, then database will be set in memory and you will have to
-  create table manually with `create_table()` method inside `transaction()` block.
+- `database` _str_ - database filename to connect to. If `":memory:"` is passed, then database will be set in memory.
 - `**connection_params` - Params to create connection with. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
 
 <a id="sqlengine._internal.connection_manager.ConnectionManager.execute"></a>
@@ -1008,7 +1087,7 @@ Fetch first `size` rows based on `query`
 
 - `query` _str_ - SQL query
 - `*args` _tuple[SqlValue, ...]_ - Arguments to the execution
-- `size` _str_ - Number of rows to return
+- `size` _int_ - Number of rows to return
   
 
 **Returns**:

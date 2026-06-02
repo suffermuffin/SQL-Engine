@@ -136,14 +136,16 @@ class Where[T : "Statement"]:
         return self._statement.__repr__()
 
     
+    def __iter__(self):
+        if not isinstance(self._statement, Select):
+            raise SqlEngineError("Can iterate only over `Select` statements")
+        return iter(self._statement)
+    
+
     def _repr_html_(self) -> str | None:
         if isinstance(self._statement, Select):
             return self._statement._repr_html_()
         return None
-    
-    
-    def __len__(self) -> int:
-        return len(self._args)
 
 
 class Statement(ABC):
@@ -298,8 +300,8 @@ class Select(Statement):
         ```
         """
         if not self._connection.in_transaction():
-            raise OutsideTransactionError("To use the `fetchall_iterator()` method you have \
-                    to keep open the transaction of the table")
+            raise OutsideTransactionError("To use the `fetchall_iterator()` method you have "
+                    "to keep open the transaction of the table")
         
         query, exec_args = self.build()
 
@@ -318,15 +320,14 @@ class Select(Statement):
         
         ```python
         with table.transaction():
-            # here `then` is used to link back to the `select` instance from `where` object
-            for row in table.select.where.gt("Age", 30).then: 
+            for row in table.select.where.gt("Age", 30):
                 process_row(row)
         ```
         """
         
         if not self._connection.in_transaction():
-            raise OutsideTransactionError("To use the `__iter__` method you have \
-                to keep open the transaction of the table")
+            raise OutsideTransactionError("To use the `__iter__` method you have "
+                "to keep open the transaction of the table")
         
         query, exec_args = self.build()
         

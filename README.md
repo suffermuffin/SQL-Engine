@@ -1,35 +1,30 @@
-- [Sql-Engine](#sql-engine)
-  - [Features](#features)
-  - [Purpose](#purpose)
-  - [Installation](#installation)
-  - [Env](#env)
-- [Quick Start](#quick-start)
-  - [Table Declaration](#table-declaration)
-  - [Instantiation](#instantiation)
-  - [Row insertion](#row-insertion)
-  - [Jupyter view](#jupyter-view)
-  - [Select Query](#select-query)
-  - [Update Query](#update-query)
-  - [Delete Query](#delete-query)
-  - [Transaction](#transaction)
-  - [Get Item](#get-item)
-  - [Custom Types](#custom-types)
-  - [Csv Converter](#csv-converter)
-  - [Pandas-like Converter](#pandas-like-converter)
-- [Full Documentation](#full-documentation)
+<p align="center">
+<a href="https://github.com/suffermuffin/SQL-Engine/actions/workflows/test.yml?query=event%3Apush">
+    <img src="https://github.com/suffermuffin/SQL-Engine/actions/workflows/test.yml/badge.svg?event=push&branch=main" alt="Tests">
+</a>
+<a href="https://github.com/suffermuffin/SQL-Engine/actions?query=workflow%3APublish">
+    <img src="https://github.com/suffermuffin/SQL-Engine/actions/workflows/publish.yml/badge.svg" alt="Publishing">
+</a>
+<a href="https://pypi.org/project/sqlengine-lite/">
+    <img alt="PyPI" src="https://img.shields.io/pypi/v/sqlengine-lite?logoSize=amd&labelColor=black&color=royalblue">
+</a>
+</p>
 
 
-# Sql-Engine
+# SqlEngine
 
-My Sql-Engine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies.
+My SqlEngine is a cute little wrapper for `sqlite3` table manipulations without any third party dependencies.
+
+
+[**Home Page**](https://github.com/suffermuffin/SQL-Engine) | [**Installation**](#installation) | [**Quick Start**](#quick-start) | [**Documentation**](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/index.md)
 
 
 ## Features
 
-`sqlengine` abstracts SQL queries into tiny little methods like `insert`, `insert_many`, `upsert`, and not so tiny (but still cute and small) query builders like `select`, `delete` and `update`. Sql-Engine also provides bulk insertion with `insert_many` and transaction operations like `select.fetchmany_iterator`. Methods can be executed either in transaction mode (thanks to `transaction` context manager) or right on the spot.
+SqlEngine abstracts SQL queries into tiny little methods like `insert`, `insert_many`, `upsert`, and not so tiny (but still cute and little) query builders like `select`, `delete` and `update`. SqlEngine also provides bulk insertion with `insert_many` and transaction operations like `select.fetchmany_iterator`. Methods can be executed either in transaction mode (thanks to `transaction` context manager) or right on the spot.
 
 
-Sql-Engine implements Jupyter integration and dynamic schema building. You can easily instantiate existing database table and view it in a cute little html representation.
+SqlEngine implements Jupyter integration and dynamic schema building. You can easily instantiate existing database table and view it in a cute little html representation.
 
 ```py
 from sqlengine import schema
@@ -62,74 +57,39 @@ table.select("InvoiceId", "CustomerId", "BillingAddress", "BillingCountry", "Tot
 
 ## Purpose
 
-It's a tiny little modern ORM-like that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own queries which might not be paramerized with methods like `select.custom()` and `where.custom()`.
+It's a tiny little modern ORM-like that lets you prototype your databases locally with great flexibility. Also, it can be used in production apps to store and retrieve data, because all select, update, delete queries are parametrized. But it does not restrict you from using your own queries which might not be parameterized with methods like `select.custom()` and `where.custom()`. Flexibility is a go to for this library.
 
-And last (but not least) is data inspection. If you need to quickly inspect existing .db file but don't want to install yet another heavy ORM with a lot of unused dependencies and features, you might look into Sql-Engine, as it uses only native python modules.
+And last (but not least) is data inspection. If you need to quickly inspect existing .db file but don't want to install yet another heavy ORM with a lot of unused dependencies and features, you might look into SqlEngine, as it uses only native python modules, implements dynamic schema builder and has a good synergy with Jupyter Notebook.
 
 
 ## Installation
 
-To install `sqlengine`, you can use `pip`:
+To install SqlEngine, you can use `pip`:
 
 ```bash
 pip install sqlengine-lite
 ```
 
-Or you can install it from source if you want to contribute
-
-```bash
-git clone https://github.com/suffermuffin/SQL-Engine.git
-cd SQL-Engine
-uv sync
-git checkout -b "<your_feature_or_fix_name>"
-```
-
 ## Env
 
-You may set environment variable for logging. By default it's `WARNING`.
+You can set environment variable for logging. By default it's `WARNING`.
 
 ```console
 SQL_ENGINE_LOG_LEVEL=INFO
 ```
 
+
 # Quick Start
 
-All you have to do to create your own cute little table is to [inherit](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#class-declaration) `SqlTableMixin` class or to create your own [schema](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#schema-declaration) and declare desired properties of your table's columns. They are:
-
-
-_Name of the table that will be used in queries. If omitted in inherited class declaration, then it will take the class name._
-```py
-__tablename__ : Optional[str]
-```
-
-_Column names of the table_
-```py
-__columns__ : list[str] 
-```
-
-_Column types of the table_
-```py
-__types__ : list[SqlType | str] 
-```
-
-_List of primary keys_
-```py
-__primary__ : list[str] 
-```
+Here lays everything you need to know to start working with SqlEngine. For detailed usage, API reference, and advanced examples, see the [full documentation](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/index.md).
 
 ## Table Declaration
 
-More details at [Declaration](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-declaration).
+All you have to do to create your own cute little table is to [inherit](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#class-declaration) `SqlTableMixin` class or to create your own [schema](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#schema-declaration) and declare desired types of your table's columns.
+
 
 ```py
 from sqlengine import SqlTableMixin, Primary
-
-# Helper constants for column names
-ID         = "ID"
-Name       = "Name"
-Occupation = "Occupation"
-Salary     = "Salary"
-
 
 class Employees(SqlTableMixin):
 
@@ -140,35 +100,35 @@ class Employees(SqlTableMixin):
 
 ```
 
+More details at [Declaration](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-declaration).
+
 ## Instantiation
 
-More details at [Instantiation](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-instantiation).
+Create an instance of the table class with provided path to create or connect to. `force_drop=True` to overwrite existing table if it exists.
 
 ```py
-# Create an instance of the table class 
-# with provided path to create or connect to
-# `force_drop=True` to overwrite existing table if exists
-
 table = Employees("temp/data.db", force_drop=True)
 ```
 
+More details at [Instantiation](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/table_declaration.md#table-instantiation).
+
 ## Row insertion
 
-```py
-# Insert one row
+Insert one row in a `*args` style.
 
+```py
 table.insert(1, "John Doe", "Software Engineer", 75000.0)
 ```
 
-```py
-# Use kwargs mapping to insert/upsert one row
+Use **kwargs mapping** to insert/upsert one row
 
+```py
 table.insert(2, salary=80000.0, name="Jane Smith", occupation="Data Scientist")
 ```
 
-```py
-# Bulk insert multiple rows
+Bulk insert multiple rows.
 
+```py
 employees_data = [
     (3, "Alice Johnson", "Product Manager", 90000.0),
     (4, "Bob Brown", "Project Manager", 78000.0),
@@ -184,17 +144,17 @@ table.insert_many(employees_data)
 ```
 
 
-```py
-# Upsert one row
+Upsert one row.
 
+```py
 table.upsert(1, "Jane Doe", "Data Scientist", 80000.0)
 ```
 
 ## Jupyter view
 
-```py
-# Inspect tables in Jupyter Notebook
+Inspect table in Jupyter Notebook.
 
+```py
 table
 ```
 
@@ -202,11 +162,18 @@ table
 
 ## Select Query
 
-More details at [Statements](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/statements.md).
+Helper constants for column names.
 
 ```py
-# Query select and fetch
+ID         = "ID"
+Name       = "Name"
+Occupation = "Occupation"
+Salary     = "Salary"
+```
 
+Query **select** and **fetch** in one go.
+
+```py
 table.select.where.between(ID, 3, 5).then.fetchall()
 
 # ->
@@ -215,9 +182,24 @@ table.select.where.between(ID, 3, 5).then.fetchall()
 #  (5, 'Charlie Davis', 'UI/UX Designer', 65000.0)]
 ```
 
-```py
-# Inspect query select in Jupyter
+**Iterate** over select statements.
 
+```py
+with table.transaction():
+    for id, occupation in table.select(ID, Occupation).where.gt(Salary, 70_000):
+        print(id, occupation)
+```
+
+```console
+1 Data Scientist
+3 Product Manager
+4 Project Manager
+6 DevOps Engineer
+```
+
+Inspect select query in Jupyter.
+
+```py
 table.select(Name, Salary).where.lt(Salary, 70_000)
 ```
 
@@ -236,33 +218,32 @@ table.update(Salary, 50_000).where.eq(Name, "Eve Taylor").then.execute()
 table.delete.where.eq(ID, 5).then.execute()
 ```
 
+More details at [Statements](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/statements.md).
+
 ## Transaction
 
-More details at [Transaction](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/transactions.md).
+Operate within a transaction
 
 ```py
-# Operate within a transaction
 
 with table.transaction():
     for row in employees_data:
         table.upsert(*row)
 ```
 
+More details at [Transaction](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/transactions.md).
+
 ## Get Item
 
-More details at [Syntax Sugar](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/syntax_sugar.md).
+Fetch row by primary key.
 
 ```py
-# Fetch row by primary key
-
-table[9]
-
-# -> (9, 'Grace Hall', 'Marketing Manager', 68000.0)
+table[9] # -> (9, 'Grace Hall', 'Marketing Manager', 68000.0)
 ```
 
-```py
-# Fetch slice by integer primary key
+Fetch slice by integer primary key.
 
+```py
 table[4:10:2]
 
 # -> 
@@ -271,9 +252,11 @@ table[4:10:2]
 #  (8, 'Frank White', 'Quality Assurance', 53000.0)]
 ```
 
+More details at [Syntax Sugar](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/syntax_sugar.md).
+
 ## Custom Types
 
-More details at [Custom Types](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/custom_types.md).
+Declare your own non-native SQL type to be compatible with sqlite3.
 
 ```py
 from datetime import datetime
@@ -302,36 +285,68 @@ class ReservationIndex(SqlTableMixin):
 
 table = ReservationIndex("temp/data.db")
 
-table.insert(1, "loft_1", DateTime.now(), None)
+table.insert(
+    user_id=1, 
+    room_id="loft_1", 
+    time_at=DateTime.now()
+)
 table
 ```
 
 <table style="border-collapse: collapse; font-size: 14px;"><caption style="font-size: 18px; font-weight: bold;">ReservationIndex</caption><thead><tr><td style="border: 1px solid #555; text-align: center;">user_id</td><td style="border: 1px solid #555; text-align: center;">room_id</td><td style="border: 1px solid #555; text-align: center;">time_at</td><td style="border: 1px solid #555; text-align: center;">user_name</td></tr></thead><tbody><tr><td style="border: 1px solid #000; text-align: center;">1</td><td style="border: 1px solid #000; text-align: center;">loft_1</td><td style="border: 1px solid #000; text-align: center;">2026-05-29 21:29:00</td><td style="border: 1px solid #000; text-align: center;">None</td></tr></tbody></table>
 
-## Csv Converter
+More details at [Custom Types](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/custom_types.md).
+
+## Pure SQL
+
+Use SQL queries directly.
 
 ```py
-# Save table to csv
+with table.transaction(autocommit=False):
+    table.conn.execute("DELETE FROM ReservationIndex WHERE user_id = 1;")
+    table.commit()
+```
+
+Same as:
+
+```py
+table.conn.execute("DELETE FROM ReservationIndex WHERE user_id = 1;")
+```
+
+```py
+table
+```
+
+<table style="border-collapse: collapse; font-size: 14px;"><caption style="font-size: 18px; font-weight: bold;">ReservationIndex</caption><thead><tr><td style="border: 1px solid #555; text-align: center;">user_id</td><td style="border: 1px solid #555; text-align: center;">room_id</td><td style="border: 1px solid #555; text-align: center;">time_at</td><td style="border: 1px solid #555; text-align: center;">user_name</td></tr></thead><tbody></tbody></table>
+
+## Csv Converter
+
+Save table to csv.
+
+```py
 from sqlengine.utils import to_csv
 
 to_csv(table, "temp/table.csv")
 ```
 
+Save query result to csv.
+
 ```py
-# Save query result to csv
 to_csv(table.select.where.gt(Salary, 70_000), "temp/query.csv")
 ```
 
+Stream big tables or query results to csv.
+
 ```py
-# Stream to csv
 with table.transaction():
     to_csv(table, "temp/query.csv", stream_batch_size=1000)
 ```
 
 ## Pandas-like Converter
 
+Convert tables or query results to pandas **DataFrame** in one shot.
+
 ```py
-# via one shot
 import pandas as pd
 from sqlengine.utils import to_dicts
 
@@ -339,8 +354,9 @@ df = pd.DataFrame(to_dicts(table))
 df.set_index("ID", inplace=True)
 ```
 
+Or stream them via generator.
+
 ```py
-# via generator
 import pandas as pd
 from sqlengine.utils import to_dicts_stream
 
@@ -353,6 +369,34 @@ with table.transaction():
 df.set_index("ID", inplace=True)
 ```
 
-# Full Documentation
+# Contributions
 
-For detailed usage, API reference, and advanced examples, see the [full documentation](https://github.com/suffermuffin/SQL-Engine/blob/main/docs/index.md).
+Your impact is welcome. Install module from source if you want to contribute:
+
+```bash
+git clone https://github.com/suffermuffin/SQL-Engine.git
+cd SQL-Engine
+```
+
+Use `uv` to sync dependencies and checkout to your new branch:
+
+```bash
+uv sync
+git checkout -b "<your_feature_or_fix_name>"
+```
+
+Don't forget to run tests after the implementation:
+
+```bash
+uv run python -m unittest discover -s tests
+```
+
+And update api documentation with your docstrings:
+
+```bash
+pydoc-markdown
+```
+
+# License
+
+This project is licensed under the terms of the [MIT license](https://github.com/suffermuffin/SQL-Engine/blob/main/LICENSE).

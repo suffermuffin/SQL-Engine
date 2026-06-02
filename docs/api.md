@@ -1,4 +1,4 @@
-# Sql-Engine
+# SqlEngine
 
 * [sqlengine.sqltable](#sqlengine.sqltable)
   * [SqlTableMixin](#sqlengine.sqltable.SqlTableMixin)
@@ -968,8 +968,7 @@ Select statement rows iterator
   
 ```python
 with table.transaction():
-    # here `then` is used to link back to the `select` instance from `where` object
-    for row in table.select.where.gt("Age", 30).then: 
+    for row in table.select.where.gt("Age", 30):
         process_row(row)
 ```
 

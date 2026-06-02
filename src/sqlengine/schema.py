@@ -62,15 +62,9 @@ def get_database_schemas(database : str) -> list[Schema]:
         cursor = conn.cursor()
         names  = get_database_tablenames(database, cursor)
         
-        schemas : list[Schema] = []
+        schemas = (get_table_schema(database, table_name, cursor) for table_name in names)
         
-        for tablename in names:
-            schema = get_table_schema(database, tablename, cursor)
-            
-            if schema:
-                schemas.append(schema)
-
-    return schemas
+    return [sh for sh in schemas if sh]
 
 
 def table_from_schema(database : str, schema : Schema, **kwargs) -> SqlTableMixin:

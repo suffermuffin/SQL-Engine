@@ -19,5 +19,5 @@ renderer:
   type: markdown
   filename: docs/api.md
   render_toc: true
-  render_toc_title: "Sql-Engine"
+  render_toc_title: "SqlEngine"
   toc_maxdepth: 1

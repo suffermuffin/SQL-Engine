@@ -73,7 +73,7 @@ class Employees(SqlTableMixin):
 
 You may combine both of the above ways in a flexible manner, but there are some rules:
 
- - Dunder attributes are declared first and annotated ones are appended to them. It's important as you will have to insert arguments in the correct order.
+ - Dunder attributes are declared first and annotated ones are appended to them. It's important as you will have to put arguments in the right order for *args-like insert operations.
  - If you declare same columns and/or primary keys both via annotations and dunders, an AttributeError will be raised.
  - Table must have at least 1 primary column
  - All declared primary keys must be present among the columns in either way

@@ -14,10 +14,10 @@ class Employees(SqlTableMixin):
     Occupation : str | None
 
     # You may overwrite your insert methods for type consistency
-    def insert(self, id : int, name : str, occupation : str) -> None:
+    def insert(self, id : int, name : str, occupation : str | None) -> None:
         return super().insert(id, name, occupation)
     
-    def upsert(self, id : int, name : str, occupation : str) -> None:
+    def upsert(self, id : int, name : str, occupation : str | None) -> None:
         return super().upsert(id, name, occupation)
 
 ```

@@ -20,8 +20,7 @@ class ConnectionManager:
     
     Args:
 
-        database (str): database filename to connect to. If `":memory:"` is passed, then database will be set in memory and you will have to
-            create table manually with `create_table()` method inside `transaction()` block.
+        database (str): database filename to connect to. If `":memory:"` is passed, then database will be set in memory.
         **connection_params: Params to create connection with. Reference: https://docs.python.org/3/library/sqlite3.html#sqlite3.connect
     """
 
@@ -139,7 +138,7 @@ class ConnectionManager:
         Args:
             query (str): SQL query
             *args (tuple[SqlValue, ...]): Arguments to the execution
-            size (str): Number of rows to return
+            size (int): Number of rows to return
 
         Returns:
             rows (list[SqlRow]): list of `size` rows
@@ -197,10 +196,14 @@ class ConnectionManager:
         if self._is_managed_transaction:
             raise TransactionError("Can't manually close managed transaction")
         
-        self._trans_cursor.close()
-        self._trans.close()
-        del(self._trans_cursor)
-        del(self._trans)
+        try:
+            self._trans_cursor.close()
+            self._trans.close()
+        except sqlite3.ProgrammingError as e:
+            raise TransactionError("Can't close connection properly") from e
+        finally:
+            del(self._trans_cursor)
+            del(self._trans)
 
 
     def commit(self) -> None:

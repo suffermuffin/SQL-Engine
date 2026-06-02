@@ -1,6 +1,6 @@
 # Statements
 
-SqlEngine uses chained statements creation via object mutation. Unlike most other ORMs, SqlEngine abstracts connection creation for single operations and lets you use statements to execute queries on the spot. **statements** are table properties that build query statements. They can use table's connection to **fetch**, **delete** or **update** rows. They also have `where` property that is a clause builder. It can't execute queries, but it has a `then` linker, that returns the above statement. Syntactically it goes like `statement.where.op(...).then.execute()`.
+SqlEngine uses chained statements creation via object mutation. Unlike most other ORMs, SqlEngine abstracts connection creation for single operations and lets you use statements to execute queries on the spot. **statements** are table properties that build query statements. They can use table's connection to **fetch**, **delete** or **update** rows. They also have `where` property that is a clause builder. It can't execute queries, but it has a `then` linker, that returns the above statement. Syntactically they go like `statement.where.op(...).then.execute()`.
 
 ```py
 table = schema.table_from_database("temp/data.db", "Employees")

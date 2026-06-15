@@ -229,6 +229,7 @@ class Select(Statement):
         
         self._columns   : list[str] = []
         self._order_by  : list[str] = []
+        self._group_by  : list[str] = []
         self._aggregate : str | None = None
         self._limit     : int | None = None
 
@@ -254,9 +255,15 @@ class Select(Statement):
 
     
     def order_by(self, column : str, ascending : bool = True) -> Self:
-        """ Orders returned rows by provided column """
+        """ Order returned rows by provided column """
         order = "ASC" if ascending else "DESC"
         self._order_by.append(f"{column} {order}")
+        return self
+    
+
+    def group_by(self, *columns : str) -> Self:
+        """ Group by provided columns """
+        self._group_by.extend(columns)
         return self
     
 
@@ -340,8 +347,9 @@ class Select(Statement):
 
     def _build(self, where_clause : str, *args : SqlValue) -> tuple[str, tuple[SqlValue, ...]]:
 
-        order   = sql.format_list(self._order_by, brackets=False)
-        columns = sql.format_list(self._columns,  brackets=False)
+        order   = sql.format_list(self._order_by, brackets=False) if self._order_by else None
+        group   = sql.format_list(self._group_by, brackets=False) if self._group_by else None
+        columns = sql.format_list(self._columns,  brackets=False) if self._columns  else None
         
         columns = "*" if not columns else columns
         columns = columns if not self._aggregate else f"{self._aggregate}({columns})"
@@ -353,7 +361,14 @@ class Select(Statement):
         else:
             limit = None
         
-        query = sql.select(self._tableschema["tablename"], columns, where_clause, order, limit)
+        query = sql.select(
+            tablename   = self._tableschema["tablename"], 
+            columns     = columns, 
+            where_clause= where_clause, 
+            order_by    = order, 
+            group_by    = group,
+            limit       = limit,
+        )
         
         return query, args
     
@@ -361,6 +376,7 @@ class Select(Statement):
     def _reset(self) -> None:
         self._columns   = []
         self._order_by  = []
+        self._group_by  = []
         self._aggregate = None
         self._limit     = None
 
@@ -429,3 +445,4 @@ class Update(MutationalStatement):
     def _reset(self) -> None:
         self._set_clauses = []
         self._set_args = []
+        

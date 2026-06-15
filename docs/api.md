@@ -887,7 +887,17 @@ Aggregate by provided method
 def order_by(column: str, ascending: bool = True) -> Self
 ```
 
-Orders returned rows by provided column
+Order returned rows by provided column
+
+<a id="sqlengine._internal.statements.Select.group_by"></a>
+
+#### group\_by
+
+```python
+def group_by(*columns: str) -> Self
+```
+
+Group by provided columns
 
 <a id="sqlengine._internal.statements.Select.limit"></a>
 

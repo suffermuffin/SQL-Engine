@@ -68,6 +68,7 @@ def select(
       tablename   : str,
       columns     : str | list[str]  = "*",
       where_clause: str | None       = None,
+      group_by    : str | None       = None,
       order_by    : str | None       = None,
       limit       : int | str | None = None
     ) -> str: 
@@ -77,6 +78,7 @@ def select(
     
     query  = f"SELECT {_columns} FROM {tablename}"
     query += f" WHERE {where_clause}" if where_clause else ""
+    query += f" GROUP BY {group_by}"  if group_by     else ""
     query += f" ORDER BY {order_by}"  if order_by     else ""
     query += f" LIMIT {limit}"        if limit        else ""
     query += ";"

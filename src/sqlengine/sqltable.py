@@ -2,24 +2,25 @@ import logging
 import os
 import sqlite3
 
-from typing import Sequence, Literal, Any
-from typing import get_origin, get_args, overload, get_type_hints
+from typing  import Sequence, Literal, Any
+from typing  import overload
+from pathlib import Path
 
-from .exceptions import TableDeclarationError
+from ._internal.metaclasses import SqlTableMeta
 
 from ._internal import sqlgen as sql
 from ._internal.repr import to_html
 
 from ._internal import ConnectionManager, Select, Update, Delete
 from ._internal.types import SqlRow, SqlValue, ColumnType
-from ._internal.types import Schema, Primary
+from ._internal.types import Schema
 from ._internal.types import register_resolve_types
 
 logger = logging.getLogger("sqlengine")
 logger.setLevel(os.getenv("SQL_ENGINE_LOG_LEVEL", "WARNING").upper())
 
 
-class SqlTableMixin:
+class SqlTableMixin(metaclass=SqlTableMeta):
     """
     Lightweight wrapper for SQLite3 tables
     
@@ -57,8 +58,14 @@ class SqlTableMixin:
     __types__     : list[ColumnType]
     __primary__   : list[str]
 
-    def __init__(self, database: str | Literal[":memory:"], force_drop : bool = False, **connection_params) -> None:
-        
+    def __init__(
+            self, 
+            database: str | Path | Literal[":memory:"], 
+            force_drop : bool = False, 
+            create : bool = True, 
+            **connection_params
+        ) -> None:
+
         self.database = database
 
         resolved_types, connection_params = register_resolve_types(self.__types__, **connection_params)
@@ -66,85 +73,10 @@ class SqlTableMixin:
         self._connection_manager = ConnectionManager(database, **connection_params)
         self.__types_sql__       = resolved_types
 
-        self._write_db(force_drop)
-
-    
-    def __init_subclass__(cls) -> None:
-
-        annotations = get_type_hints(cls)
-        
-        tablename = cls.__tablename__ if \
-            hasattr(cls, "__tablename__") and cls.__tablename__ is not None\
-            else cls.__name__
-
-        columns = cls.__columns__ if hasattr(cls, "__columns__") else []
-        types   = cls.__types__   if hasattr(cls, "__types__")   else []
-        primary = cls.__primary__ if hasattr(cls, "__primary__") else []
-
-        for name, type_ in annotations.items():
-            if name.startswith("_") or name.endswith("_"):
-                continue
-            
-            if name in columns:
-                raise TableDeclarationError(f"Annotated column `{name}` is already in __columns__")
-            
-            columns.append(name)
-            
-            if not get_origin(type_) == Primary:
-                types.append(type_)
-                continue
-
-            if name in primary:
-                raise TableDeclarationError(f"Annotated primary column `{name}` is already in __primary__")
-            
-            primary_type = get_args(type_)[0]
-
-            if not primary_type:
-                raise TableDeclarationError(("Primary type was declared without the type. "
-                "Usage: `my_column : Primary[T]`, where T is desired type"))
-            
-            types.append(primary_type)
-            primary.append(name)
-            
-        
-        cls.__tablename__ = tablename
-
-        cls.__columns__ = columns
-        cls.__types__   = types
-        cls.__primary__ = primary
-        cls._validate_attributes()
+        self._write_db(force_drop, create)
 
 
-    @classmethod
-    def _validate_attributes(cls) -> None:
-
-        missing_attrs = [
-            attr for attr in 
-            [ "__columns__", "__types__", "__primary__", "__tablename__"]
-            if not hasattr(cls, attr)
-        ]
-
-        if missing_attrs:
-            raise TableDeclarationError(f'{cls.__name__} is missing attributes: {missing_attrs}')
-        
-        n_types, n_cols = len(cls.__types__), len(cls.__columns__)
-
-        if not n_types == n_cols:
-            raise TableDeclarationError((f'`__types__` and `__columns__`: length mismatch: types = {n_types}, columns = {n_cols}'))
-        
-        if len(cls.__primary__) < 1:
-            raise TableDeclarationError(f'`__primary__`: Number of primary keys must be at least 1')
-        
-        wrong_primaries = [
-            prim for prim in cls.__primary__ if
-            prim not in cls.__columns__
-        ]
-
-        if wrong_primaries:
-            raise TableDeclarationError(f'`__primary__`: Keys {wrong_primaries} can\'t be primaries as they are not declared in __columns__')
-        
-
-    def _write_db(self, force_drop : bool) -> None:
+    def _write_db(self, force_drop : bool, create : bool) -> None:
 
         if self.database == ":memory:":
             logger.debug(f"{self.tablename}: Using in-memory database")
@@ -152,14 +84,15 @@ class SqlTableMixin:
         
         if not os.path.exists(self.database):
             logger.debug(f'{self.tablename}: {self.database} does not exist. Creating...')
-            parent_dir = self.database.removesuffix(os.path.basename(self.database))
+            parent_dir = str(self.database).removesuffix(os.path.basename(self.database))
             if parent_dir: 
                 os.makedirs(parent_dir, exist_ok=True)
 
         elif force_drop is True:
             self.drop_table(confirm=True)
 
-        self.create_table()
+        if create:
+            self.create_table()
 
     
     def create_table(self) -> None:

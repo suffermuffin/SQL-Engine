@@ -4,6 +4,7 @@ import os
 
 from typing import overload, Literal, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 
 from .types import SqlValue, SqlRow
 from ..exceptions import TransactionError, NestedTransactionError, OutsideTransactionError
@@ -27,7 +28,7 @@ class ConnectionManager:
     _trans : sqlite3.Connection
     _trans_cursor : sqlite3.Cursor
 
-    def __init__(self, database : str, **connection_params) -> None:
+    def __init__(self, database : str | Path | Literal[":memory:"], **connection_params) -> None:
         
         self.database = database
         self.connection_params = connection_params

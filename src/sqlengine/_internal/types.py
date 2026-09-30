@@ -79,6 +79,7 @@ def register_resolve_types(types : list[ColumnType], **connection_params) -> tup
 
     resolved : list[str] = []
     assert_register_types = False
+    params = connection_params.copy()
 
     for type_ in types:
         
@@ -100,6 +101,6 @@ def register_resolve_types(types : list[ColumnType], **connection_params) -> tup
         resolved.append(sql_type)
     
     if assert_register_types and ("detect_types" not in connection_params):
-        connection_params.update(dict(detect_types=sqlite3.PARSE_DECLTYPES))
+        params.update(dict(detect_types=sqlite3.PARSE_DECLTYPES))
 
-    return resolved, connection_params
+    return resolved, params

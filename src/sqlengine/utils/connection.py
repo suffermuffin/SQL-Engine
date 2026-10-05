@@ -2,6 +2,7 @@ import logging
 import os
 import sqlite3
 
+from pathlib import Path
 from contextlib import contextmanager
 
 from ..sqltable   import SqlTableMixin
@@ -44,7 +45,7 @@ def shared_connection(*args : SqlTableMixin, autocommit : bool = True, **connect
         raise NestedTransactionError(f"Tables {tables_in_trans} are already in transaction")
     
     unique_databases = set(table.database for table in args)
-    database_map : dict[str, list[ConnectionManager]] = {}
+    database_map : dict[str | Path, list[ConnectionManager]] = {}
     
     for db in unique_databases:
         database_map[db] = [table.conn for table in args if table.database == db]
